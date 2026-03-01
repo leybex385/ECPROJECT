@@ -1,2 +1,2 @@
-# EasyCrypto
-EasyCrypto
+# ECPROJECT
+ECPROJECT
