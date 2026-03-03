@@ -1591,8 +1591,8 @@
 
         .trading-container {
             display: flex;
-            height: 100%;
-            overflow: hidden;
+            align-items: flex-start;
+            min-height: 100%;
         }
 
         .trade-form {
@@ -8768,13 +8768,7 @@
                                 </div>
                             </div>
 
-                            <div class="buy-sell-toggle" style="margin-bottom: 16px;">
-                                <div id="contract-buy-tab" class="bs-btn buy active"
-                                    onclick="setContractTradeMode('buy')">Buy Long
-                                </div>
-                                <div id="contract-sell-tab" class="bs-btn sell" onclick="setContractTradeMode('sell')">
-                                    Buy Short</div>
-                            </div>
+
 
                             <div class="dropdown-container" style="position:relative;">
                                 <select onchange="changeOrderType(this.value)"
@@ -8835,15 +8829,26 @@
                                 <span id="contract-handling-fee" style="color: #fff; font-weight:500;">0.00 USDT</span>
                             </div>
 
-                            <button id="contract-action-btn" onclick="handleContractTrade()"
-                                style="width: 100%; background: #2ED573; padding:0; border: none; border-radius: 6px; display:flex; overflow:hidden; cursor:pointer;">
-                                <div id="contract-action-text1"
-                                    style="flex:1; padding: 12px; text-align:center; color: #fff; font-weight: 500; font-size: 16px;">
-                                    Buy Long</div>
-                                <div id="contract-action-text2"
-                                    style="padding: 12px 16px; background: rgba(0,0,0,0.1); color:#fff; font-size:14px; display:flex; align-items:center;">
-                                    Buy</div>
-                            </button>
+                            <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 40px;">
+                                <button onclick="handleContractTrade('buy')"
+                                    style="width: 100%; background: #2ED573; padding:0; border: none; border-radius: 6px; display:flex; overflow:hidden; cursor:pointer;">
+                                    <div
+                                        style="flex:1; padding: 12px; text-align:center; color: #fff; font-weight: 500; font-size: 16px;">
+                                        Buy Long</div>
+                                    <div
+                                        style="padding: 12px 16px; background: rgba(0,0,0,0.1); color:#fff; font-size:14px; display:flex; align-items:center;">
+                                        Buy</div>
+                                </button>
+                                <button onclick="handleContractTrade('sell')"
+                                    style="width: 100%; background: #FF4757; padding:0; border: none; border-radius: 6px; display:flex; overflow:hidden; cursor:pointer;">
+                                    <div
+                                        style="flex:1; padding: 12px; text-align:center; color: #fff; font-weight: 500; font-size: 16px;">
+                                        Buy Short</div>
+                                    <div
+                                        style="padding: 12px 16px; background: rgba(0,0,0,0.1); color:#fff; font-size:14px; display:flex; align-items:center;">
+                                        Sell</div>
+                                </button>
+                            </div>
                         </div>
 
                         <div id="deliv-form-content" style="display:none;">
@@ -9001,7 +9006,7 @@
                 </div>
             </div>
 
-            <div id="trade-spacer" style="flex-grow: 1;"></div>
+            <div id="trade-spacer"></div>
 
             <div id="trade-bottom-tabs-area" class="trade-bottom-tabs" style="border-bottom: 1px solid #f9f9f9;">
                 <div class="tb-tab active" onclick="switchTradeFooterTab('positions')">Hold position</div>
@@ -12641,15 +12646,9 @@ No transfer fees for account transfer / exchange</div>
             }
         };
 
-        window.handleContractTrade = async () => {
-            const btn = document.getElementById('contract-action-btn');
-            const text1 = document.getElementById('contract-action-text1');
-            const text2 = document.getElementById('contract-action-text2');
-            const original1 = text1.innerText;
-            const original2 = text2.innerText;
-
+        window.handleContractTrade = async (directionOverride) => {
             const symbol = window.currentTradingCoin || 'BTC';
-            const mode = window.contractTradeMode || 'buy';
+            const mode = directionOverride ? directionOverride.toLowerCase() : (window.contractTradeMode || 'buy');
             const direction = mode === 'buy' ? 'Long' : 'Short';
             const price = document.getElementById('contract-price-input').value;
             const amount = document.getElementById('contract-total-input').value;
@@ -12661,11 +12660,6 @@ No transfer fees for account transfer / exchange</div>
             }
 
             try {
-                text1.innerText = 'Processing...';
-                text2.innerText = '...';
-                btn.disabled = true;
-                btn.style.opacity = '0.7';
-
                 const tradeInfo = {
                     coin: symbol,
                     pair: symbol + '/USDT',
@@ -12681,11 +12675,6 @@ No transfer fees for account transfer / exchange</div>
                 alert(`${direction} order for ${amount} USDT (${leverage}x) placed successfully!`);
             } catch (e) {
                 alert("Trade failed: " + e.message);
-            } finally {
-                text1.innerText = original1;
-                text2.innerText = original2;
-                btn.disabled = false;
-                btn.style.opacity = '1';
             }
         };
 
