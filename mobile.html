@@ -22,10 +22,25 @@
         }
     </script>
     <script type="module">
-        import { auth, db, doc, onSnapshot, onAuthStateChanged, signOut, getDoc, signInWithEmailAndPassword, createUserWithEmailAndPassword, setDoc, updateDoc } from './firebase-config.js';
+        import { auth, db, doc, onSnapshot, onAuthStateChanged, signOut, getDoc, signInWithEmailAndPassword, createUserWithEmailAndPassword, setDoc, updateDoc, RecaptchaVerifier, signInWithPhoneNumber, checkSession, collection, addDoc, serverTimestamp } from './firebase-config.js';
 
         // Expose to global window for legacy scripts
-        window.fb = { auth, db, doc, onSnapshot, onAuthStateChanged, signOut, getDoc, signInWithEmailAndPassword, createUserWithEmailAndPassword, setDoc, updateDoc };
+        window.fb = { auth, db, doc, onSnapshot, onAuthStateChanged, signOut, getDoc, signInWithEmailAndPassword, createUserWithEmailAndPassword, setDoc, updateDoc, RecaptchaVerifier, signInWithPhoneNumber, collection, addDoc, serverTimestamp };
+        window.checkSession = checkSession;
+        window.onSnapshot = onSnapshot;
+        window.db = db;
+        window.doc = doc;
+        window.updateDoc = updateDoc;
+        window.getDoc = getDoc;
+        window.collection = collection;
+        window.addDoc = addDoc;
+        window.serverTimestamp = serverTimestamp;
+
+        // Initialize reCAPTCHA (Required for Phone Auth)
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+            'size': 'invisible',
+            'callback': (response) => { }
+        });
 
         // Real-time Profile Sync & Screen Management
         onAuthStateChanged(auth, (user) => {
@@ -1136,7 +1151,8 @@
 
         .input-group label {
             font-size: 14px;
-            color: #666;
+            color: #ddd;
+            /* Improved visibility on dark background */
             font-weight: 500;
         }
 
@@ -1170,7 +1186,8 @@
         .chain-label {
             font-size: 14px;
             font-weight: 500;
-            color: #1a0b2e;
+            color: #ffffff;
+            /* Changed from dark to white for visibility */
             margin-bottom: 12px;
         }
 
@@ -1250,7 +1267,8 @@
 
         .important-notes p {
             font-size: 12px;
-            color: #666;
+            color: #444;
+            /* Slightly darker for better readability on light background */
             line-height: 1.6;
             margin-bottom: 10px;
         }
@@ -3066,6 +3084,56 @@
             display: block;
         }
 
+        /* Admin Specific Styles */
+        .chat-row.admin-row {
+            align-items: flex-start;
+        }
+
+        .admin-msg {
+            background: #334155;
+            /* Dark gray for balance */
+            border-radius: 12px 12px 12px 0 !important;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-icons .notification-dot {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 6px !important;
+            height: 6px !important;
+            background: #ff4d4f;
+            border-radius: 50%;
+            border: 1px solid #fff;
+            display: none;
+            z-index: 100;
+        }
+
+        .s-nav-item,
+        .support-footer-item {
+            position: relative;
+        }
+
+        .nav-badge {
+            position: absolute;
+            top: 2px;
+            right: 15%;
+            background: #ff4d4f;
+            color: #fff;
+            font-size: 8px;
+            font-weight: bold;
+            padding: 1px 3px;
+            min-width: 12px;
+            height: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            border: 1px solid #fff;
+            display: none;
+            z-index: 100;
+        }
+
 
 
         /* FAIS SCREEN STYLES */
@@ -4518,6 +4586,8 @@
                         data-t-key="auth_placeholder_confirm_password">
                 </div>
 
+                <div id="recaptcha-container"></div>
+
                 <div class="auth-form-group">
                     <label data-t-key="auth_label_verification">Verification Code</label>
                     <div class="otp-row">
@@ -4698,7 +4768,8 @@
                     </div>
                 </div>
                 <div class="header-icons">
-                    <span onclick="showScreen('supportScreen')" style="cursor:pointer;">
+                    <span onclick="showScreen('supportScreen')" style="cursor:pointer; position: relative;">
+                        <span id="headset-dot" class="notification-dot"></span>
                         <svg class="fintech-icon" viewBox="0 0 24 24">
                             <path
                                 d="M12 2C7.58 2 4 5.58 4 10V17C4 18.66 5.34 20 7 20H8V14H6V10C6 6.69 8.69 4 12 4C15.31 4 18 6.69 18 10V14H16V20H17C18.66 20 20 18.66 20 17V10C20 5.58 16.42 2 12 2Z"
@@ -4815,9 +4886,9 @@
                     <div id="funds-common-header" class="funds-header-section">
                         <div class="funds-assets-label"><span data-t-key="funds_total">Total assets (USDT)
                                 👁️</span><span style="color: #6a35ff; cursor: pointer;"
-                                onclick="showScreen('flash-history')">🗂️</span></div>
+                                onclick="showScreen('history')">🗂️</span></div>
                         <div class="funds-main-value">
-                            <h1>0.00</h1><span>≈ $0.00</span>
+                            <h1 id="funds-balance-h1">0.00</h1><span id="funds-balance-span">≈ $0.00</span>
                         </div>
                         <div class="funds-actions">
                             <div class="funds-action-btn" onclick="showScreen('deposit')" data-t-key="funds_deposit">
@@ -4839,18 +4910,21 @@
                         <div class="portfolio-title" data-t-key="funds_portfolio">Portfolio</div>
                         <div class="portfolio-row">
                             <div class="p-meta"><span>🌀</span> <span data-t-key="tab_spot">Spot</span></div>
-                            <div class="p-value"><span class="p-value-main">0 USDT</span><span class="p-value-sub">≈
+                            <div class="p-value"><span class="p-value-main" id="funds-spot-main">0 USDT</span><span
+                                    class="p-value-sub" id="funds-spot-sub">≈
                                     $ 0.00</span></div>
                         </div>
                         <div class="portfolio-row">
                             <div class="p-meta"><span>📄</span> <span data-t-key="tab_contract">Contract</span></div>
-                            <div class="p-value"><span class="p-value-main">0 USDT</span><span class="p-value-sub">≈
+                            <div class="p-value"><span class="p-value-main" id="funds-contract-main">0 USDT</span><span
+                                    class="p-value-sub" id="funds-contract-sub">≈
                                     $ 0.00</span></div>
                         </div>
                         <div class="portfolio-row">
                             <div class="p-meta"><span>📁</span> <span data-t-key="funds_delivery_account">Delivery
                                     contract account</span></div>
-                            <div class="p-value"><span class="p-value-main">0 USDT</span><span class="p-value-sub">≈
+                            <div class="p-value"><span class="p-value-main" id="funds-delivery-main">0 USDT</span><span
+                                    class="p-value-sub" id="funds-delivery-sub">≈
                                     $ 0.00</span></div>
                         </div>
                     </div>
@@ -4875,10 +4949,10 @@
                             <div class="c-stat-group">
                                 <div class="c-stat-label"><span data-t-key="funds_total">Total assets (USDT)</span> 👁️
                                     <span style="margin-left:auto; color:#6a35ff; cursor: pointer;"
-                                        onclick="showScreen('flash-history')">🗂️</span>
+                                        onclick="showScreen('history')">🗂️</span>
                                 </div>
                                 <div class="c-stat-value">
-                                    <h2>0</h2><span>≈$0.00</span>
+                                    <h2 id="funds-contract-h2">0</h2><span id="funds-contract-span">≈$0.00</span>
                                 </div>
                             </div>
 
@@ -5085,7 +5159,8 @@
                         <div class="s-nav-icon">🏠</div>
                         <span>Home</span>
                     </div>
-                    <div class="s-nav-item">
+                    <div class="s-nav-item" onclick="showScreen('supportChatScreen')">
+                        <span id="support-nav-badge" class="nav-badge"></span>
                         <div class="s-nav-icon">💬</div>
                         <span>Messages</span>
                     </div>
@@ -5121,10 +5196,10 @@
                             Total account assets converted[USDT]
                         </p>
                         <div class="p-card-val-row">
-                            <h3>0</h3>
-                            <span>≈$0.00</span>
+                            <h3 id="prof-balance-h3">0</h3>
+                            <span id="prof-balance-span">≈$0.00</span>
                         </div>
-                        <div class="p-card-avail" data-t-key="prof_available">Available: 0</div>
+                        <div class="p-card-avail" id="prof-balance-avail" data-t-key="prof_available">Available: 0</div>
                     </div>
 
                     <div class="profile-menu-item" onclick="showScreen('deposit')">
@@ -6408,6 +6483,7 @@
                         <span>Home</span>
                     </div>
                     <div class="support-footer-item" onclick="showScreen('supportChatScreen')">
+                        <span id="support-footer-badge" class="nav-badge"></span>
                         <span class="support-footer-icon">💬</span>
                         <span>Messages</span>
                     </div>
@@ -8343,7 +8419,7 @@
                     </div>
 
                     <!-- VOUCHER UPLOAD -->
-                    <div style="font-size: 14px; font-weight: 500; color: #1F2937; margin-bottom: 12px;">Payment voucher
+                    <div style="font-size: 14px; font-weight: 500; color: #ffffff; margin-bottom: 12px;">Payment voucher
                         (upload a screenshot of payment details)</div>
                     <input type="file" id="voucher-input" accept="image/*" style="display: none;"
                         onchange="handleVoucherUpload(this)">
@@ -8451,6 +8527,9 @@
                 <div id="hist-tab-withdraw" class="history-tab-btn" onclick="switchHistoryTab('withdraw')">
                     Withdraw
                 </div>
+                <div id="hist-tab-contract" class="history-tab-btn" onclick="switchHistoryTab('contract')">
+                    Contract
+                </div>
             </div>
 
             <div class="scroll-area">
@@ -8460,6 +8539,10 @@
                 </div>
                 <div id="hist-withdraw-content" class="hidden">
                     <div class="history-label">Cryptocurrency</div>
+                    <div class="no-data-msg">No data</div>
+                </div>
+                <div id="hist-contract-content" class="hidden">
+                    <div class="history-label" style="text-align: center; margin-bottom: 12px;">Contracts</div>
                     <div class="no-data-msg">No data</div>
                 </div>
             </div>
@@ -8480,7 +8563,7 @@
                         Contract
                     </div>
                 </div>
-                <span onclick="showScreen('flash-history')" style="cursor:pointer;">🕒</span>
+                <span onclick="showScreen('history')" style="cursor:pointer;">🕒</span>
             </div>
 
             <!-- SPOT LAYOUT -->
@@ -8752,7 +8835,7 @@
                                 <span id="contract-handling-fee" style="color: #fff; font-weight:500;">0.00 USDT</span>
                             </div>
 
-                            <button id="contract-action-btn"
+                            <button id="contract-action-btn" onclick="handleContractTrade()"
                                 style="width: 100%; background: #2ED573; padding:0; border: none; border-radius: 6px; display:flex; overflow:hidden; cursor:pointer;">
                                 <div id="contract-action-text1"
                                     style="flex:1; padding: 12px; text-align:center; color: #fff; font-weight: 500; font-size: 16px;">
@@ -9019,8 +9102,10 @@
 
             <div class="kline-footer">
                 <button class="kline-foot-btn kline-btn-crypto" onclick="goBack()">Crypto</button>
-                <button class="kline-foot-btn kline-btn-long" onclick="goBack()">Buy Long</button>
-                <button class="kline-foot-btn kline-btn-short" onclick="goBack()">Buy Short</button>
+                <button class="kline-foot-btn kline-btn-long" onclick="setContractTradeMode('buy'); goBack()">Buy
+                    Long</button>
+                <button class="kline-foot-btn kline-btn-short" onclick="setContractTradeMode('sell'); goBack()">Buy
+                    Short</button>
             </div>
         </div>
 
@@ -9305,40 +9390,59 @@
 
         let currentOTP = null;
         let otpCooldown = 0;
+        let confirmationResult = null; // Store phone auth result
 
-        function sendOTP() {
+        async function sendOTP() {
             console.log("sendOTP button clicked");
-            const email = document.getElementById('signup-email').value;
+            const rawEmail = document.getElementById('signup-email').value;
+            const email = rawEmail ? rawEmail.trim() : "";
             const msg = document.getElementById('auth-msg');
             const otpBtn = document.getElementById('otp-btn');
 
             if (!email) {
-                alert("Please enter your email first");
-                return msg.innerHTML = '<span class="error-text">Please enter your email first</span>';
+                alert("Please enter your email or mobile number first");
+                return msg.innerHTML = '<span class="error-text">Please enter your email or mobile number first</span>';
             }
             if (otpCooldown > 0) return;
-
-            // Optional: Alert to confirm click is working
-            // alert("Sending code to: " + email);
-
-            // Generate 6-digit OTP
-            currentOTP = Math.floor(100000 + Math.random() * 900000).toString();
 
             otpBtn.disabled = true;
             otpBtn.innerText = 'Sending...';
 
-            emailjs.send("service_au63y5g", "template_66g9xxf", {
-                to_email: email,
-                otp_code: currentOTP
-            }).then(() => {
-                msg.innerHTML = '<span class="success-text">Verification code sent to your email!</span>';
-                startOTPCooldown();
-            }, (error) => {
-                console.error('EmailJS Error:', error);
-                msg.innerHTML = '<span class="error-text">Failed to send code. Please check your credentials.</span>';
-                otpBtn.disabled = false;
-                otpBtn.innerText = 'Send Code';
-            });
+            if (currentSignupTab === 'mobile') {
+                let phoneNumber = email;
+                if (!phoneNumber.startsWith('+')) {
+                    phoneNumber = '+1' + phoneNumber.replace(/\D/g, '');
+                }
+
+                try {
+                    const { auth, signInWithPhoneNumber } = window.fb;
+                    confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
+                    msg.innerHTML = '<span class="success-text">SMS Verification Code Sent!</span>';
+                    startOTPCooldown();
+                } catch (error) {
+                    console.error("Phone Auth Error:", error);
+                    msg.innerHTML = `<span class="error-text">Failed to send OTP: ${error.message}</span>`;
+                    otpBtn.disabled = false;
+                    otpBtn.innerText = 'Send Code';
+                    try { window.recaptchaVerifier.render().then(id => grecaptcha.reset(id)); } catch (e) { }
+                }
+            } else {
+                // Generate 6-digit OTP for Email
+                currentOTP = Math.floor(100000 + Math.random() * 900000).toString();
+
+                emailjs.send("service_au63y5g", "template_66g9xxf", {
+                    to_email: email,
+                    otp_code: currentOTP
+                }).then(() => {
+                    msg.innerHTML = '<span class="success-text">Verification code sent to your email!</span>';
+                    startOTPCooldown();
+                }, (error) => {
+                    console.error('EmailJS Error:', error);
+                    msg.innerHTML = '<span class="error-text">Failed to send code. Please check your credentials.</span>';
+                    otpBtn.disabled = false;
+                    otpBtn.innerText = 'Send Code';
+                });
+            }
         }
 
         function startOTPCooldown() {
@@ -9378,18 +9482,25 @@
 
             if (!rawEmail || !pass || !otpInput) return msg.innerHTML = '<span class="error-text">Please fill all fields</span>';
             if (pass !== confirm) return msg.innerHTML = '<span class="error-text">Passwords do not match</span>';
-            if (otpInput !== currentOTP) return msg.innerHTML = '<span class="error-text">Invalid verification code</span>';
 
             let finalEmail = rawEmail;
             let phone = '';
 
             if (currentSignupTab === 'mobile') {
-                phone = rawEmail; // In mobile tab, the email field contains the phone number
+                if (!confirmationResult) return msg.innerHTML = '<span class="error-text">Please request an OTP first</span>';
+                try {
+                    await confirmationResult.confirm(otpInput);
+                } catch (error) {
+                    return msg.innerHTML = `<span class="error-text">Invalid SMS code: ${error.message}</span>`;
+                }
+
+                phone = rawEmail;
                 if (!phone.startsWith('+')) {
                     phone = '+1' + phone.replace(/\D/g, '');
                 }
                 finalEmail = `${phone}@mobile.local`;
             } else {
+                if (otpInput !== currentOTP) return msg.innerHTML = '<span class="error-text">Invalid verification code</span>';
                 finalEmail = rawEmail.toLowerCase();
             }
 
@@ -9937,9 +10048,9 @@
             }
         }
 
-        let tradeMode = 'buy';
+        window.tradeMode = 'buy';
         function setTradeMode(mode) {
-            tradeMode = mode;
+            window.tradeMode = mode;
             console.log("Trade mode: " + mode);
 
             const buyTab = document.getElementById('spot-buy-tab');
@@ -9961,9 +10072,9 @@
             }
         }
 
-        let contractTradeMode = 'buy';
+        window.contractTradeMode = 'buy';
         function setContractTradeMode(mode) {
-            contractTradeMode = mode;
+            window.contractTradeMode = mode;
             console.log("Contract Trade mode: " + mode);
 
             const buyTab = document.getElementById('contract-buy-tab');
@@ -9989,7 +10100,7 @@
             }
         }
 
-        let currentLeverage = 1;
+        window.currentLeverage = 1;
 
         function changeLeverage(val) {
             currentLeverage = parseFloat(val);
@@ -10189,13 +10300,40 @@
             if (delivTimerInterval) clearInterval(delivTimerInterval);
         }
 
-        function confirmDelivOrder() {
+        async function confirmDelivOrder() {
             document.getElementById('deliv-confirm-modal').style.display = 'none';
             document.getElementById('deliv-countdown-modal').style.display = 'block';
-            startDelivCountdown();
+
+            // Save to Firestore and get docId
+            let docId = null;
+            try {
+                const user = await checkSession(false);
+                if (user) {
+                    const tradeInfo = {
+                        coin: delivTradeData.coin,
+                        pair: delivTradeData.coin + '/USDT',
+                        direction: delivTradeData.direction,
+                        price: delivTradeData.price,
+                        amount: delivTradeData.amount,
+                        type: 'Delivery',
+                        delivery_time: delivTradeData.time,
+                        status: 'Open',
+                        user_uid: user.uid,
+                        user_email: user.email || user.phoneNumber || 'User',
+                        timestamp: serverTimestamp()
+                    };
+                    const docRef = await addDoc(collection(db, 'trades'), tradeInfo);
+                    docId = docRef.id;
+                    console.log("Delivery trade saved to Firestore with ID:", docId);
+                }
+            } catch (e) {
+                console.error("Error saving delivery trade to Firestore:", e);
+            }
+
+            startDelivCountdown(docId);
         }
 
-        function startDelivCountdown() {
+        function startDelivCountdown(docId) {
             const countdownTitle = document.getElementById('countdown-title');
             const pPriceEl = document.getElementById('cd-p-price');
             const cPriceEl = document.getElementById('cd-c-price');
@@ -10217,6 +10355,24 @@
             timeEl.innerText = delivTradeData.time;
 
             const totalDash = 314;
+
+            // Optional listener for admin forced outcome (via User Profile)
+            checkSession(false).then(user => {
+                if (user) {
+                    const unsub = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+                        if (docSnap.exists()) {
+                            const data = docSnap.data();
+                            if (data.delivery_rule && data.delivery_rule !== 'normal') {
+                                delivTradeData.admin_outcome = data.delivery_rule;
+                            } else {
+                                delivTradeData.admin_outcome = null; // Revert to normal if changed
+                            }
+                        }
+                    });
+                    delivTradeData.unsub = unsub;
+                }
+            });
+            delivTradeData.docId = docId;
 
             delivTimerInterval = setInterval(() => {
                 remaining--;
@@ -10240,6 +10396,7 @@
 
                 if (remaining <= 0) {
                     clearInterval(delivTimerInterval);
+                    if (delivTradeData.unsub) delivTradeData.unsub();
                     showDelivResult(currentPriceStr);
                 }
             }, 1000);
@@ -10258,28 +10415,73 @@
             const timeEl = document.getElementById('res-time');
 
             const purchasePrice = parseFloat(delivTradeData.price.replace(/,/g, ''));
-            const settlePrice = parseFloat(finalPriceStr.replace(/,/g, ''));
+            let settlePrice = parseFloat(finalPriceStr.replace(/,/g, ''));
             const amount = parseFloat(delivTradeData.amount);
 
             let won = false;
-            if (delivTradeData.direction === 'Long') {
-                won = settlePrice >= purchasePrice;
+
+            // Check for admin forced outcome first
+            if (delivTradeData.admin_outcome === 'win') {
+                won = true;
+                // adjust settle price visually so it matches the win
+                if (delivTradeData.direction === 'Long' && settlePrice <= purchasePrice) settlePrice = purchasePrice * 1.001;
+                if (delivTradeData.direction === 'Short' && settlePrice >= purchasePrice) settlePrice = purchasePrice * 0.999;
+            } else if (delivTradeData.admin_outcome === 'loss') {
+                won = false;
+                // adjust settle price visually so it matches the loss
+                if (delivTradeData.direction === 'Long' && settlePrice >= purchasePrice) settlePrice = purchasePrice * 0.999;
+                if (delivTradeData.direction === 'Short' && settlePrice <= purchasePrice) settlePrice = purchasePrice * 1.001;
             } else {
-                won = settlePrice <= purchasePrice;
+                // Natural market logic fallback
+                if (delivTradeData.direction === 'Long') {
+                    won = settlePrice >= purchasePrice;
+                } else {
+                    won = settlePrice <= purchasePrice;
+                }
             }
 
             const profit = won ? amount * 0.9 : -amount; // 90% profit or full loss
+
+            // Format settle price
+            const finalSettleStr = settlePrice > 1000 ? settlePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : settlePrice.toFixed(4);
 
             resTitle.innerText = `${delivTradeData.coin}/USDT Delivery`;
             plEl.innerText = `P/L ${profit >= 0 ? '+' : ''}${profit.toFixed(2)} USDT`;
             plEl.style.color = won ? '#2ED573' : '#FF4757';
             pPriceEl.innerText = delivTradeData.price;
-            sPriceEl.innerText = finalPriceStr;
+            sPriceEl.innerText = finalSettleStr;
             sPriceEl.style.color = won ? '#2ED573' : '#FF4757';
             dirEl.innerText = 'Buy ' + delivTradeData.direction;
             dirEl.style.color = delivTradeData.direction === 'Long' ? '#2ED573' : '#FF4757';
             amountEl.innerText = delivTradeData.amount + ' USDT';
             timeEl.innerText = delivTradeData.time;
+
+            // Finalize in Firestore if doc exists
+            if (delivTradeData.docId) {
+                updateDoc(doc(db, 'trades', delivTradeData.docId), {
+                    status: won ? 'Approved' : 'Rejected',
+                    settlement_price: finalSettleStr,
+                    pnl_amount: profit.toFixed(2)
+                }).catch(e => console.error(e));
+
+                // Update user account balance
+                checkSession(false).then(async user => {
+                    if (user) {
+                        try {
+                            const userRef = doc(db, 'users', user.uid);
+                            const userSnap = await getDoc(userRef);
+                            if (userSnap.exists()) {
+                                const currentBalance = parseFloat(userSnap.data().balance || 0);
+                                const newBalance = currentBalance + profit;
+                                await updateDoc(userRef, { balance: newBalance });
+                                console.log(`Balance updated by ${profit}. New balance: ${newBalance}`);
+                            }
+                        } catch (err) {
+                            console.error("Error updating user balance:", err);
+                        }
+                    }
+                });
+            }
         }
 
         function setVerificationMethod(method, element) {
@@ -10353,8 +10555,15 @@
         function switchHistoryTab(tab) {
             document.getElementById('hist-tab-deposit').classList.toggle('active', tab === 'deposit');
             document.getElementById('hist-tab-withdraw').classList.toggle('active', tab === 'withdraw');
+            document.getElementById('hist-tab-contract').classList.toggle('active', tab === 'contract');
+
             document.getElementById('hist-deposit-content').classList.toggle('hidden', tab !== 'deposit');
             document.getElementById('hist-withdraw-content').classList.toggle('hidden', tab !== 'withdraw');
+            document.getElementById('hist-contract-content').classList.toggle('hidden', tab !== 'contract');
+
+            if (tab === 'contract') {
+                renderHistoryContractList();
+            }
         }
 
         function goBack() {
@@ -10430,18 +10639,65 @@
             if (currentScreen === 'market') renderList(currentActiveTab, 'market-list-box', e.target.value);
         });
 
-        // OPEN RECENT SESSION REMOVED (Legacy openApp not defined)
         function switchTradeFooterTab(tab) {
             const tabs = document.querySelectorAll('.trade-bottom-tabs .tb-tab');
+            const footerContent = document.getElementById('trade-footer-content');
+
             if (currentContractType === 'perp') {
                 tabs[0].classList.toggle('active', tab === 'positions');
                 tabs[1].classList.toggle('active', tab === 'orders');
-                document.getElementById('trade-footer-content').innerText = tab === 'orders' ? 'No open orders' : 'No data available';
+
+                if (tab === 'positions') {
+                    renderHoldPositions();
+                } else {
+                    footerContent.innerText = 'No open orders';
+                }
             } else {
                 tabs[0].classList.toggle('active', tab === 'positions');
                 tabs[1].classList.toggle('active', tab === 'orders' || tab === 'historical');
-                document.getElementById('trade-footer-content').innerText = 'No data available';
+                if (tab === 'positions') {
+                    renderHoldPositions();
+                } else {
+                    footerContent.innerText = 'No data available';
+                }
             }
+        }
+
+        function renderHoldPositions() {
+            const container = document.getElementById('trade-footer-content');
+            if (!container) return;
+
+            if (!window.activeOpenTrades || window.activeOpenTrades.length === 0) {
+                container.innerHTML = 'No data available';
+                return;
+            }
+
+            let html = '';
+            window.activeOpenTrades.forEach(trade => {
+                const color = trade.direction === 'Long' ? '#2ED573' : '#FF4757';
+                html += `
+                    <div style="background:#241442; border-radius:8px; padding:12px; margin-bottom:10px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                            <div style="color:#fff; font-weight:500;">
+                                <span style="background:${color}; color:#fff; font-size:10px; padding:2px 4px; border-radius:2px; margin-right:4px;">${trade.direction || 'Long'} ${trade.leverage || '10'}x</span>
+                                ${trade.coin}/USDT
+                            </div>
+                            <div style="color:${color}; font-weight:500;">
+                                ${trade.status || 'Open'}
+                            </div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:13px; color:#aaa;">
+                            <div>Type: ${trade.type}</div>
+                            <div>Price: ${trade.price}</div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:13px; color:#aaa; margin-top:4px;">
+                            <div>Amount: ${trade.amount}</div>
+                            ${trade.time ? `<div>Time: ${trade.time}</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
         }
 
         function toggleOrderTypeDropdown(e) {
@@ -10640,12 +10896,18 @@
             if (input.files && input.files[0]) {
                 const reader = new FileReader();
                 reader.onload = function (e) {
-                    const container = document.getElementById('chat-main-area');
-                    const row = document.createElement('div');
-                    row.className = 'chat-row';
-                    row.innerHTML = `<div class="chat-bubble-img"><img src="${e.target.result}"></div>`;
-                    container.appendChild(row);
-                    container.scrollTop = container.scrollHeight;
+                    // Call the globally exposed Firebase send function
+                    if (window.fire_sendChatMessage) {
+                        window.fire_sendChatMessage(null, e.target.result);
+                    } else {
+                        // Fallback logic for when Firebase not loaded
+                        const container = document.getElementById('chat-main-area');
+                        const row = document.createElement('div');
+                        row.className = 'chat-row';
+                        row.innerHTML = `<div class="chat-bubble-img"><img src="${e.target.result}"></div>`;
+                        container.appendChild(row);
+                        container.scrollTop = container.scrollHeight;
+                    }
                 }
                 reader.readAsDataURL(input.files[0]);
                 input.value = ''; // clear for next time
@@ -10656,13 +10918,21 @@
             const input = document.getElementById('chat-text-input');
             const val = input.value.trim();
             if (!val) return;
-            const container = document.getElementById('chat-main-area');
-            const row = document.createElement('div');
-            row.className = 'chat-row';
-            row.innerHTML = `<div class="chat-bubble-text">${val}</div>`;
-            container.appendChild(row);
-            input.value = '';
-            container.scrollTop = container.scrollHeight;
+
+            // Call the globally exposed Firebase send function
+            if (window.fire_sendChatMessage) {
+                window.fire_sendChatMessage(val);
+                input.value = '';
+            } else {
+                // Fallback UI logic
+                const container = document.getElementById('chat-main-area');
+                const row = document.createElement('div');
+                row.className = 'chat-row';
+                row.innerHTML = `<div class="chat-bubble-text">${val}</div>`;
+                container.appendChild(row);
+                input.value = '';
+                container.scrollTop = container.scrollHeight;
+            }
         }
 
         function showHelpQuestion(type) {
@@ -11132,22 +11402,24 @@ No transfer fees for account transfer / exchange</div>
         let selectedDepositCoin = 'USDT';
         let selectedDepositChain = 'Solana';
         let depositVoucherImage = null;
-        const defaultDepositData = {
+        window.defaultDepositData = {
             'USDT': { 'ERC20': { qrCode: null, walletAddress: null }, 'TRC20': { qrCode: null, walletAddress: null }, 'BEP20': { qrCode: null, walletAddress: null }, 'Solana': { qrCode: null, walletAddress: null } },
-            'BTC': { 'Bitcoin': { qrCode: null, walletAddress: null }, 'BEP20': { qrCode: null, walletAddress: null } },
-            'ETH': { 'ERC20': { qrCode: null, walletAddress: null }, 'BEP20': { qrCode: null, walletAddress: null } },
-            'USDC': { 'ERC20': { qrCode: null, walletAddress: null }, 'Solana': { qrCode: null, walletAddress: null }, 'BEP20': { qrCode: null, walletAddress: null } },
+            'BTC': { 'Bitcoin': { qrCode: null, walletAddress: null }, 'BEP20': { qrCode: null, walletAddress: null }, 'TRC20': { qrCode: null, walletAddress: null } },
+            'ETH': { 'ERC20': { qrCode: null, walletAddress: null }, 'BEP20': { qrCode: null, walletAddress: null }, 'TRC20': { qrCode: null, walletAddress: null } },
+            'USDC': { 'ERC20': { qrCode: null, walletAddress: null }, 'Solana': { qrCode: null, walletAddress: null }, 'BEP20': { qrCode: null, walletAddress: null }, 'TRC20': { qrCode: null, walletAddress: null } },
             'SOL': { 'Solana': { qrCode: null, walletAddress: null } },
             'DOGE': { 'Dogecoin': { qrCode: null, walletAddress: null } },
             'BNB': { 'BEP20': { qrCode: null, walletAddress: null }, 'BEP2': { qrCode: null, walletAddress: null } },
             'XRP': { 'XRP Ledger': { qrCode: null, walletAddress: null } },
             'TRX': { 'TRC20': { qrCode: null, walletAddress: null } }
         };
-        let adminDepositData = JSON.parse(localStorage.getItem('adminDepositData')) || defaultDepositData;
+        window.adminDepositData = window.defaultDepositData;
+
+
 
         function selectDepositCoin(coin, color, icon) {
             selectedDepositCoin = coin;
-            const chains = Object.keys(defaultDepositData[coin]);
+            const chains = Object.keys(window.adminDepositData[coin]); // Changed to adminDepositData
             selectedDepositChain = chains[0]; // Set first chain as default
             toggleDepositDetail(true);
             updateDepositDetailUI();
@@ -11175,14 +11447,14 @@ No transfer fees for account transfer / exchange</div>
 
             // Update chain buttons
             const btnContainer = document.getElementById('deposit-chain-buttons');
-            const chains = Object.keys(defaultDepositData[selectedDepositCoin]);
+            const chains = Object.keys(window.defaultDepositData[selectedDepositCoin]);
             let btnHtml = '';
             chains.forEach(c => {
                 btnHtml += `<button class="chain-btn ${c === selectedDepositChain ? 'active' : ''}" onclick="switchDepositChain('${c}')">${c}</button>`;
             });
             btnContainer.innerHTML = btnHtml;
 
-            const coinData = adminDepositData[selectedDepositCoin] || {};
+            const coinData = window.adminDepositData[selectedDepositCoin] || {};
             const chainData = coinData[selectedDepositChain] || { qrCode: null, walletAddress: null };
 
             const qrBox = document.getElementById('deposit-qr-box');
@@ -11192,15 +11464,15 @@ No transfer fees for account transfer / exchange</div>
             if (chainData.qrCode) {
                 qrBox.innerHTML = `<img src="${chainData.qrCode}" alt="QR">`;
             } else {
-                qrBox.innerHTML = `<span style="color: #999; font-size: 14px; text-align: center;">Waiting for admin upload</span>`;
+                qrBox.innerHTML = `<span style="color: #666; font-size: 14px; text-align: center; font-weight: 500;">Waiting for admin upload</span>`;
             }
 
             if (chainData.walletAddress) {
                 addressBox.innerText = chainData.walletAddress;
-                addressBox.style.color = '#1a0b2e';
+                addressBox.style.color = '#000'; // Pure black for best contrast on light background
             } else {
                 addressBox.innerText = 'Waiting for admin address';
-                addressBox.style.color = '#999';
+                addressBox.style.color = '#777'; // Darker gray for light background
             }
 
             importantText.innerText = `Explain text, please do not recharge any non-${selectedDepositCoin}-${selectedDepositChain} assets to the above address until you change it, otherwise the asset bonus cannot be retrieved.`;
@@ -11227,7 +11499,7 @@ No transfer fees for account transfer / exchange</div>
 
         function selectWithdrawCoin(coin) {
             selectedWithdrawCoin = coin;
-            const chains = Object.keys(defaultDepositData[coin]);
+            const chains = Object.keys(window.defaultDepositData[coin]);
             selectedWithdrawChain = chains[0];
 
             // Update UI
@@ -11252,7 +11524,7 @@ No transfer fees for account transfer / exchange</div>
 
         function updateWithdrawChainUI() {
             const container = document.getElementById('withdraw-chain-container');
-            const chains = Object.keys(defaultDepositData[selectedWithdrawCoin]);
+            const chains = Object.keys(window.defaultDepositData[selectedWithdrawCoin]);
             let html = '';
             chains.forEach(chain => {
                 const activeClass = chain === selectedWithdrawChain ? 'active' : '';
@@ -11338,10 +11610,13 @@ No transfer fees for account transfer / exchange</div>
             document.getElementById('voucher-status-msg').innerText = '';
         }
 
-        function submitDepositForm() {
-            const amount = document.getElementById('deposit-amount').value;
-            const outgoingAddress = document.getElementById('deposit-outgoing-address').value;
-            const coinData = adminDepositData[selectedDepositCoin] || {};
+        async function submitDepositForm() {
+            const amountInput = document.getElementById('deposit-amount');
+            const outgoingAddressInput = document.getElementById('deposit-outgoing-address');
+
+            const amount = amountInput.value.trim();
+            const outgoingAddress = outgoingAddressInput.value.trim();
+            const coinData = window.adminDepositData[selectedDepositCoin] || {};
             const chainData = coinData[selectedDepositChain] || {};
 
             if (!chainData.walletAddress || !chainData.qrCode) {
@@ -11359,10 +11634,40 @@ No transfer fees for account transfer / exchange</div>
                 return;
             }
 
-            alert("Deposit request submitted successfully! Waiting for confirmation.");
-            // Reset and go back
-            toggleDepositDetail(false);
-            goBack();
+            const submitBtn = event.currentTarget;
+            const originalText = submitBtn.innerText;
+            submitBtn.disabled = true;
+            submitBtn.innerText = 'Submitting...';
+
+            try {
+                if (typeof window.fire_submitDeposit === 'function') {
+                    await window.fire_submitDeposit({
+                        coin: selectedDepositCoin,
+                        chain: selectedDepositChain,
+                        amount: amount,
+                        outgoingAddress: outgoingAddress,
+                        voucher: depositVoucherImage
+                    });
+
+                    alert("Deposit request submitted successfully! Waiting for confirmation.");
+
+                    // Reset fields
+                    amountInput.value = '';
+                    outgoingAddressInput.value = '';
+                    resetVoucher();
+
+                    toggleDepositDetail(false);
+                    goBack();
+                } else {
+                    throw new Error("System not ready. Please try again in 2 seconds.");
+                }
+            } catch (error) {
+                console.error("Submission Error:", error);
+                alert("Failed to submit deposit: " + error.message);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerText = originalText;
+            }
         }
 
         function copyWalletAddress() {
@@ -12112,6 +12417,518 @@ No transfer fees for account transfer / exchange</div>
         window.klineChart = new SimulatedKLine('klineCanvas');
     </script>
 
+    <script type="module">
+        import { db, auth, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, setDoc, getDoc, checkSession, updateDoc, increment, onAuthStateChanged } from './firebase-config.js';
+
+        let chatUnsubscribe = null;
+        let unreadUnsubscribe = null;
+
+        async function initUnreadListener() {
+            const user = await checkSession(false);
+            if (!user) return;
+
+            const uid = user.uid;
+            const chatRef = doc(db, 'support_chats', uid);
+
+            if (unreadUnsubscribe) unreadUnsubscribe();
+
+            unreadUnsubscribe = onSnapshot(chatRef, async (docSnap) => {
+                const data = docSnap.data();
+                let unreadCount = data ? (data.unread_count_user || 0) : 0;
+
+                // If chat screen is active, reset unread count automatically
+                const chatScreen = document.getElementById('supportChatScreen');
+                if (chatScreen && !chatScreen.classList.contains('hidden') && unreadCount > 0) {
+                    try {
+                        await updateDoc(chatRef, { unread_count_user: 0 });
+                        unreadCount = 0;
+                    } catch (e) { }
+                }
+
+                const dot = document.getElementById('headset-dot');
+                const navBadge = document.getElementById('support-nav-badge');
+                const footerBadge = document.getElementById('support-footer-badge');
+
+                if (unreadCount > 0) {
+                    if (dot) dot.style.display = 'block';
+                    if (navBadge) {
+                        navBadge.style.display = 'block';
+                        navBadge.textContent = unreadCount;
+                    }
+                    if (footerBadge) {
+                        footerBadge.style.display = 'block';
+                        footerBadge.textContent = unreadCount;
+                    }
+                } else {
+                    if (dot) dot.style.display = 'none';
+                    if (navBadge) navBadge.style.display = 'none';
+                    if (footerBadge) footerBadge.style.display = 'none';
+                }
+            });
+        }
+
+        async function initChat() {
+            const user = await checkSession(false);
+            if (!user) return;
+
+            const uid = user.uid;
+            const name = user.displayName || user.email || user.phoneNumber || 'User';
+
+            const chatRef = doc(db, 'support_chats', uid);
+            // Reset unread count when opening chat
+            try {
+                await updateDoc(chatRef, { unread_count_user: 0 });
+            } catch (e) { console.warn("Could not reset unread count", e); }
+
+            try {
+                const chatSnap = await getDoc(chatRef);
+                if (!chatSnap.exists()) {
+                    await setDoc(chatRef, {
+                        user_uid: uid,
+                        user_name: name,
+                        last_message: '',
+                        last_sender: '',
+                        timestamp: serverTimestamp(),
+                        unread_count_admin: 0
+                    });
+                }
+            } catch (e) {
+                console.error("Error checking chat doc:", e);
+            }
+
+            const messagesRef = collection(db, 'support_chats', uid, 'messages');
+            const q = query(messagesRef, orderBy('timestamp', 'asc'));
+
+            if (chatUnsubscribe) chatUnsubscribe();
+
+            chatUnsubscribe = onSnapshot(q, (snapshot) => {
+                const container = document.getElementById('chat-main-area');
+                if (!container) return;
+                container.innerHTML = '';
+
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const row = document.createElement('div');
+                    const isAdmin = data.sender === 'admin';
+                    row.className = `chat-row ${isAdmin ? 'admin-row' : ''}`;
+
+                    if (isAdmin) {
+                        row.innerHTML = `<div class="chat-bubble-text admin-msg">${data.text}</div>`;
+                    } else if (data.type === 'image') {
+                        row.innerHTML = `<div class="chat-bubble-img"><img src="${data.text}"></div>`;
+                    } else {
+                        row.innerHTML = `<div class="chat-bubble-text">${data.text}</div>`;
+                    }
+                    container.appendChild(row);
+                });
+                container.scrollTop = container.scrollHeight;
+            }, (err) => {
+                console.error("Chat sync error:", err);
+            });
+        }
+
+        window.fire_sendChatMessage = async (text, imageData = null) => {
+            let user = auth.currentUser;
+            if (!user) {
+                user = await checkSession(false);
+            }
+            if (!user) return alert('Please log in to use chat');
+
+            const uid = user.uid;
+            const messagesRef = collection(db, 'support_chats', uid, 'messages');
+            const chatRef = doc(db, 'support_chats', uid);
+
+            const msgData = {
+                text: text || imageData,
+                sender: 'user',
+                timestamp: serverTimestamp(),
+                type: imageData ? 'image' : 'text'
+            };
+
+            try {
+                await addDoc(messagesRef, msgData);
+                const chatSnap = await getDoc(chatRef);
+                const currentUnread = chatSnap.exists() ? (chatSnap.data()?.unread_count_admin || 0) : 0;
+
+                await setDoc(chatRef, {
+                    user_uid: uid,
+                    user_name: user.displayName || user.email || user.phoneNumber || 'User',
+                    last_message: imageData ? '[Image]' : text,
+                    last_sender: 'user',
+                    timestamp: serverTimestamp(),
+                    unread_count_admin: currentUnread + 1
+                }, { merge: true });
+            } catch (e) {
+                console.error("Chat error:", e);
+                alert("Failed to send: " + e.message);
+            }
+        };
+
+        async function initDepositSync() {
+            console.log("Mobile: Starting deposit address sync listener...");
+            onSnapshot(collection(db, 'deposit_addresses'), (snapshot) => {
+                console.log(`Mobile: Received deposit sync snapshot (${snapshot.size} docs)`);
+                const newData = JSON.parse(JSON.stringify(window.defaultDepositData));
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    let symbol = data.symbol;
+                    if (symbol && symbol.includes(' ')) symbol = symbol.split(' ')[0];
+                    const networks = data.networks || {};
+                    console.log(`Mobile: Processing sync data for ${symbol}`, networks);
+
+                    if (symbol && newData[symbol]) {
+                        Object.entries(networks).forEach(([netName, netData]) => {
+                            if (netData.status === 'Active') {
+                                newData[symbol][netName] = { qrCode: netData.qrCode, walletAddress: netData.address };
+                            }
+                        });
+                    }
+                });
+                window.adminDepositData = newData;
+                const depositDetail = document.getElementById('deposit-detail-view');
+                if (depositDetail && !depositDetail.classList.contains('hidden')) {
+                    console.log("Mobile: Deposit view active, refreshing UI...");
+                    if (typeof window.updateDepositDetailUI === 'function') window.updateDepositDetailUI();
+                    else if (typeof updateDepositDetailUI === 'function') updateDepositDetailUI();
+                }
+            }, (err) => {
+                console.error("Mobile: Deposit sync error", err);
+            });
+        }
+
+        window.fire_submitDeposit = async (data) => {
+            console.log("Mobile: Attempting to submit deposit to Firestore...", data);
+            const user = await checkSession(false);
+            if (!user) throw new Error("Please log in again.");
+
+            const depositData = {
+                ...data,
+                user_uid: user.uid,
+                user_email: user.email || user.phoneNumber || 'User',
+                status: 'Pending',
+                timestamp: serverTimestamp()
+            };
+
+            try {
+                const docRef = await addDoc(collection(db, 'deposits'), depositData);
+                console.log("Mobile: Deposit submitted successfully with ID:", docRef.id);
+            } catch (error) {
+                throw error;
+            }
+        };
+
+        window.fire_submitTrade = async (data) => {
+            console.log("Mobile: Attempting to submit trade to Firestore...", data);
+            const user = await checkSession(false);
+            if (!user) throw new Error("Please log in again.");
+
+            const tradeData = {
+                ...data,
+                user_uid: user.uid,
+                user_email: user.email || user.phoneNumber || 'User',
+                status: 'Open',
+                timestamp: serverTimestamp()
+            };
+
+            try {
+                const docRef = await addDoc(collection(db, 'trades'), tradeData);
+                console.log("Mobile: Trade submitted successfully with ID:", docRef.id);
+                return docRef.id;
+            } catch (error) {
+                console.error("Firestore submission error", error);
+                throw error;
+            }
+        };
+
+        window.handleContractTrade = async () => {
+            const btn = document.getElementById('contract-action-btn');
+            const text1 = document.getElementById('contract-action-text1');
+            const text2 = document.getElementById('contract-action-text2');
+            const original1 = text1.innerText;
+            const original2 = text2.innerText;
+
+            const symbol = window.currentTradingCoin || 'BTC';
+            const mode = window.contractTradeMode || 'buy';
+            const direction = mode === 'buy' ? 'Long' : 'Short';
+            const price = document.getElementById('contract-price-input').value;
+            const amount = document.getElementById('contract-total-input').value;
+            const leverage = window.currentLeverage || 1;
+            const orderType = document.getElementById('order-type-text').innerText;
+
+            if (!amount || parseFloat(amount) <= 0) {
+                return alert("Please enter a valid amount.");
+            }
+
+            try {
+                text1.innerText = 'Processing...';
+                text2.innerText = '...';
+                btn.disabled = true;
+                btn.style.opacity = '0.7';
+
+                const tradeInfo = {
+                    coin: symbol,
+                    pair: symbol + '/USDT',
+                    direction: direction,
+                    price: price,
+                    amount: amount,
+                    leverage: leverage,
+                    order_type: orderType,
+                    type: 'Perpetual'
+                };
+
+                await window.fire_submitTrade(tradeInfo);
+                alert(`${direction} order for ${amount} USDT (${leverage}x) placed successfully!`);
+            } catch (e) {
+                alert("Trade failed: " + e.message);
+            } finally {
+                text1.innerText = original1;
+                text2.innerText = original2;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
+        };
+
+        let depositHistoryUnsubscribe = null;
+        async function initDepositHistoryListener(user) {
+            if (!user) return;
+            if (depositHistoryUnsubscribe) depositHistoryUnsubscribe();
+
+            console.log("Mobile: Listening for all deposits to filter in JS for user:", user.uid);
+
+            // Using a broader query and filtering in JS to ensure it's not a query/indexing issue
+            const q = collection(db, 'deposits');
+
+            depositHistoryUnsubscribe = onSnapshot(q, (snapshot) => {
+                const container = document.getElementById('hist-deposit-content');
+                if (!container) return;
+
+                console.log(`Mobile: Received deposits snapshot (${snapshot.size} docs total)`);
+
+                const userDeposits = [];
+                snapshot.forEach(docSnap => {
+                    const d = docSnap.data();
+                    if (d.user_uid === user.uid) {
+                        userDeposits.push({ id: docSnap.id, ...d });
+                    }
+                });
+
+                console.log(`Mobile: Found ${userDeposits.length} deposits for current user`);
+
+                if (userDeposits.length === 0 && snapshot.size > 0) {
+                    const firstDoc = snapshot.docs[0].data();
+                    console.log(`Mobile: DEBUG - No match. Current UID: ${user.uid}, Sample Doc UID: ${firstDoc.user_uid}, Doc ID: ${snapshot.docs[0].id}`);
+                }
+
+                let html = '<div class="history-label">Cryptocurrency</div>';
+                if (userDeposits.length === 0) {
+                    html += `<div class="no-data-msg">No data found in ${snapshot.size} records.</div>`;
+                } else {
+                    userDeposits.sort((a, b) => {
+                        const tA = a.timestamp ? a.timestamp.seconds : 0;
+                        const tB = b.timestamp ? b.timestamp.seconds : 0;
+                        return tB - tA;
+                    });
+
+                    userDeposits.forEach(d => {
+                        const time = d.timestamp ? new Date(d.timestamp.seconds * 1000).toLocaleString() : 'Pending...';
+                        const statusClass = d.status === 'Approved' ? 'success' : (d.status === 'Rejected' ? 'error' : 'warning');
+
+                        html += `
+                            <div class="history-item" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 3px solid ${statusClass === 'success' ? '#2ED573' : (statusClass === 'error' ? '#FF4757' : '#F5A623')}">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                    <span style="font-weight: 600;">${d.coin} (${d.chain})</span>
+                                    <span style="color: ${statusClass === 'success' ? '#2ED573' : (statusClass === 'error' ? '#FF4757' : '#F5A623')}; font-weight: 500;">${d.status}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 13px; color: #9CA3AF;">
+                                    <span>${d.amount} ${d.coin}</span>
+                                    <span>${time}</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+                container.innerHTML = html;
+            }, (error) => {
+                console.error("Mobile: Deposit history error:", error);
+                const container = document.getElementById('hist-deposit-content');
+                if (container) container.innerHTML += `<div style="color:red;font-size:10px;">Error: ${error.message}</div>`;
+            });
+        }
+
+        let userBalanceUnsubscribe = null;
+        async function initUserBalanceListener(user) {
+            if (!user) return;
+            if (userBalanceUnsubscribe) userBalanceUnsubscribe();
+
+            userBalanceUnsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    const balance = data.balance || 0;
+                    const formattedBalance = parseFloat(balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                    // Update various balance displays in the UI
+                    const elH1 = document.getElementById('funds-balance-h1');
+                    if (elH1) elH1.innerText = formattedBalance;
+                    const elSpan = document.getElementById('funds-balance-span');
+                    if (elSpan) elSpan.innerText = `≈ $${formattedBalance}`;
+
+                    const spotMain = document.getElementById('funds-spot-main');
+                    if (spotMain) spotMain.innerText = `${formattedBalance} USDT`;
+                    const spotSub = document.getElementById('funds-spot-sub');
+                    if (spotSub) spotSub.innerText = `≈ $ ${formattedBalance}`;
+
+                    const contractMain = document.getElementById('funds-contract-main');
+                    if (contractMain) contractMain.innerText = `${formattedBalance} USDT`;
+                    const contractSub = document.getElementById('funds-contract-sub');
+                    if (contractSub) contractSub.innerText = `≈ $ ${formattedBalance}`;
+
+                    const deliveryMain = document.getElementById('funds-delivery-main');
+                    if (deliveryMain) deliveryMain.innerText = `${formattedBalance} USDT`;
+                    const deliverySub = document.getElementById('funds-delivery-sub');
+                    if (deliverySub) deliverySub.innerText = `≈ $ ${formattedBalance}`;
+
+                    const cStatH2 = document.getElementById('funds-contract-h2');
+                    if (cStatH2) cStatH2.innerText = formattedBalance;
+                    const cStatSpan = document.getElementById('funds-contract-span');
+                    if (cStatSpan) cStatSpan.innerText = `≈$${formattedBalance}`;
+
+                    const profH3 = document.getElementById('prof-balance-h3');
+                    if (profH3) profH3.innerText = formattedBalance;
+                    const profSpan = document.getElementById('prof-balance-span');
+                    if (profSpan) profSpan.innerText = `≈$${formattedBalance}`;
+
+                    const profAvailableEl = document.getElementById('prof-balance-avail');
+                    if (profAvailableEl) profAvailableEl.innerText = `Available: ${formattedBalance}`;
+
+                    const availableTradeEl = document.querySelector('#trade-available-text');
+                    if (availableTradeEl) availableTradeEl.innerText = `Available ${formattedBalance} USDT`;
+
+                    const withdrawAvailableEl = document.getElementById('withdraw-available-text');
+                    if (withdrawAvailableEl) withdrawAvailableEl.innerText = `Available ${formattedBalance}`;
+
+                    console.log("Mobile: Balance updated to", formattedBalance);
+                }
+            }, (error) => {
+                console.error("Mobile: Balance listener error:", error);
+            });
+        }
+        let tradeHistoryUnsubscribe = null;
+        async function initTradeHistoryListener(user) {
+            if (!user) return;
+            if (tradeHistoryUnsubscribe) tradeHistoryUnsubscribe();
+
+            const q = collection(db, 'trades');
+            tradeHistoryUnsubscribe = onSnapshot(q, (snapshot) => {
+                window.activeOpenTrades = [];
+                window.tradeHistoryAll = [];
+                snapshot.forEach(docSnap => {
+                    const d = docSnap.data();
+                    if (d.user_uid === user.uid) {
+                        if (d.status === 'Open' || d.status === 'Pending') {
+                            window.activeOpenTrades.push({ id: docSnap.id, ...d });
+                        } else {
+                            window.tradeHistoryAll.push({ id: docSnap.id, ...d });
+                        }
+                    }
+                });
+
+                const sortFn = (a, b) => {
+                    const tA = a.timestamp ? a.timestamp.seconds : 0;
+                    const tB = b.timestamp ? b.timestamp.seconds : 0;
+                    return tB - tA;
+                };
+                window.activeOpenTrades.sort(sortFn);
+                window.tradeHistoryAll.sort(sortFn);
+
+                // If trade tab is active, re-render it
+                if (currentScreen === 'trade') {
+                    renderHoldPositions();
+                }
+
+                // If history screen is active and we are on the contract tab, re-render it
+                if (currentScreen === 'history') {
+                    renderHistoryContractList();
+                }
+            });
+        }
+
+        function renderHistoryContractList() {
+            const container = document.getElementById('hist-contract-content');
+            if (!container) return;
+
+            // The first two children are the "Contracts" label and the "No data" message.
+            // We want to keep the label, but replacing everything else.
+            let labelHtml = '<div class="history-label" style="text-align: center; margin-bottom: 12px;">Contracts</div>';
+
+            if (!window.tradeHistoryAll || window.tradeHistoryAll.length === 0) {
+                container.innerHTML = labelHtml + '<div class="no-data-msg">No data</div>';
+                return;
+            }
+
+            let html = labelHtml;
+            window.tradeHistoryAll.forEach(trade => {
+                const color = trade.direction === 'Long' ? '#2ED573' : '#FF4757';
+                let statusColor = '#aaa';
+                if (trade.status === 'Approved') statusColor = '#2ED573';
+                if (trade.status === 'Rejected') statusColor = '#FF4757';
+
+                const timeStr = trade.time || (trade.timestamp ? new Date(trade.timestamp.seconds * 1000).toLocaleString() : '');
+
+                html += `
+                    <div class="history-item" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 3px solid ${statusColor}">
+                        <div style="display:flex; justify-content:space-between; margin-bottom: 4px;">
+                            <span style="color: #fff; font-weight: 500; font-size: 14px;">${trade.coin}/USDT <span style="font-size:12px; font-weight:normal; background: ${color}; padding: 2px 4px; border-radius: 4px; margin-left: 4px;">${trade.direction} ${trade.leverage}x</span></span>
+                            <span style="color: ${statusColor}; font-weight: 500; font-size: 14px;">${trade.status || 'Closed'}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
+                            <span style="color: #9CA3AF; font-size: 12px;">Type: ${trade.type}</span>
+                            <span style="color: #9CA3AF; font-size: 12px;">Price: ${trade.price}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
+                            <span style="color: #9CA3AF; font-size: 12px;">Amount: ${trade.amount}</span>
+                            <span style="color: #9CA3AF; font-size: 12px;">${timeStr}</span>
+                        </div>
+                        ${trade.rejection_reason ? `<div style="text-align:left; font-size:12px; color:#FF4757; margin-top:6px; background:rgba(255,71,87,0.1); padding:6px; border-radius:4px;">${trade.rejection_reason}</div>` : ''}
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        // Initialize all listeners when the auth state changes
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                console.log("Mobile: User authenticated, initializing listeners...", user.uid);
+                initUnreadListener();
+                initChat();
+                initDepositSync();
+                initDepositHistoryListener(user);
+                initUserBalanceListener(user);
+                initTradeHistoryListener(user);
+            } else {
+                console.log("Mobile: User not authenticated, cleaning up listeners.");
+                if (unreadUnsubscribe) unreadUnsubscribe();
+                if (chatUnsubscribe) chatUnsubscribe();
+                if (depositHistoryUnsubscribe) depositHistoryUnsubscribe();
+                if (userBalanceUnsubscribe) userBalanceUnsubscribe();
+                if (tradeHistoryUnsubscribe) tradeHistoryUnsubscribe();
+            }
+        });
+
+        const originalShowScreen = window.showScreen;
+        window.showScreen = function (target, isPush) {
+            if (typeof originalShowScreen === 'function') {
+                originalShowScreen(target, isPush);
+            }
+            if (target === 'supportChatScreen') {
+                initChat();
+            }
+            if (target === 'trade') {
+                renderHoldPositions();
+            }
+        };
+    </script>
 </body>
 
 </html>

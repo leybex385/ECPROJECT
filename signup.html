@@ -267,11 +267,13 @@
                 <input type="email" id="email-input" class="form-input" placeholder="Please enter your email" required>
             </div>
 
-            <!-- Mobile Section (US +1) -->
+            <!-- Mobile Section (Flexible Prefix) -->
             <div class="form-group identifier-section" id="mobile-section">
-                <label>Mobile</label>
+                <label>Mobile Number</label>
                 <div class="input-group">
-                    <div class="country-prefix">+ 1</div>
+                    <input type="text" id="country-prefix" class="form-input"
+                        style="width: 80px; flex-shrink: 0; text-align: center; font-weight: 600;" value="+1"
+                        placeholder="+1">
                     <input type="tel" id="mobile-input" class="form-input"
                         placeholder="Please enter a mobile phone number">
                 </div>
@@ -321,9 +323,8 @@
     </footer>
 
     <script type="module">
-        // Import checkSession as well to import full firebase configuration
-        import { auth, createUserWithEmailAndPassword, db, doc, setDoc, signOut } from './firebase-config.js';
-        import { RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        // Import centralized firebase configuration and auth functions
+        import { auth, createUserWithEmailAndPassword, db, doc, setDoc, signOut, RecaptchaVerifier, signInWithPhoneNumber } from './firebase-config.js';
 
         // Protocol check for CORS issues
         if (window.location.protocol === 'file:') {
@@ -428,19 +429,24 @@
             }
 
             if (currentTab === 'mobile') {
+                const prefix = document.getElementById('country-prefix').value.trim();
                 let phoneNumber = mobileInput.value.trim();
                 if (!phoneNumber) return alert("Please enter a mobile number");
 
-                // Ensure format for US: +1 followed by number
+                // Correctly format the phone number: Ensure it starts with the specified prefix
+                let fullPhoneNumber = phoneNumber;
                 if (!phoneNumber.startsWith('+')) {
-                    phoneNumber = '+1' + phoneNumber.replace(/\D/g, '');
+                    // Combine prefix and number, cleaning any extra digits if prefix is already present
+                    const cleanPrefix = prefix.startsWith('+') ? prefix : '+' + prefix;
+                    fullPhoneNumber = cleanPrefix + phoneNumber.replace(/\D/g, '');
                 }
 
                 try {
                     sendOtpBtn.textContent = 'Sending...';
                     sendOtpBtn.disabled = true;
 
-                    confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
+                    console.log("Phone Auth: Sending OTP to", fullPhoneNumber);
+                    confirmationResult = await signInWithPhoneNumber(auth, fullPhoneNumber, window.recaptchaVerifier);
 
                     alert("SMS Verification Code Sent!");
                     sendOtpBtn.textContent = 'Resend Code';
@@ -493,13 +499,15 @@
                     return alert("Invalid SMS verification code: " + error.message);
                 }
 
+                const prefix = document.getElementById('country-prefix').value.trim();
                 let phoneNumber = mobileInput.value.trim();
-                // Ensure format for US: +1 followed by number
-                if (!phoneNumber.startsWith('+')) {
-                    phoneNumber = '+1' + phoneNumber.replace(/\D/g, '');
-                }
+
+                // Format for consistency
+                const cleanPrefix = prefix.startsWith('+') ? prefix : '+' + prefix;
+                let fullPhone = (phoneNumber.startsWith('+')) ? phoneNumber : (cleanPrefix + phoneNumber.replace(/\D/g, ''));
+
                 // Convert phone number to a valid email representation for Firebase easy login handling
-                finalEmail = phoneNumber + "@mobile.local";
+                finalEmail = fullPhone + "@mobile.local";
             }
 
             try {
