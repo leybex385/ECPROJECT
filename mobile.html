@@ -9,6 +9,103 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <div id="cors-warning"
+        style="display: none; background: #ff4444; color: #fff; padding: 10px; text-align: center; position: fixed; top: 0; left: 0; width: 100%; z-index: 9999; font-weight: bold; border-bottom: 2px solid #fff; font-size: 13px;">
+        ⚠️ SECURITY BLOCKED: Registration will NOT work.
+        <br>Run <code>server.bat</code> then use <code>http://localhost:8000/mobile.html</code>
+    </div>
+    <script>
+        if (window.location.protocol === 'file:') {
+            document.addEventListener('DOMContentLoaded', () => {
+                document.getElementById('cors-warning').style.display = 'block';
+            });
+        }
+    </script>
+    <script type="module">
+        import { auth, db, doc, onSnapshot, onAuthStateChanged, signOut, getDoc, signInWithEmailAndPassword, createUserWithEmailAndPassword, setDoc, updateDoc } from './firebase-config.js';
+
+        // Expose to global window for legacy scripts
+        window.fb = { auth, db, doc, onSnapshot, onAuthStateChanged, signOut, getDoc, signInWithEmailAndPassword, createUserWithEmailAndPassword, setDoc, updateDoc };
+
+        // Real-time Profile Sync & Screen Management
+        onAuthStateChanged(auth, (user) => {
+            const appScreen = document.getElementById('app-screen');
+            const authScreen = document.getElementById('auth-screen');
+
+            if (user) {
+                console.log("Mobile: User authenticated, syncing profile...", user.uid);
+
+                // Sync from Firestore
+                const userRef = doc(db, 'users', user.uid);
+                onSnapshot(userRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        // ONLY SHOW APP SCREEN IF PROFILE EXISTS AND EXPLICITLY LOGGED IN ON MOBILE
+                        if (sessionStorage.getItem('mobile_session_active') === 'true') {
+                            if (appScreen) appScreen.classList.remove('hidden');
+                            if (authScreen) authScreen.classList.add('hidden');
+                        } else {
+                            // Valid user, but hasn't explicitly logged in on mobile in this session
+                            console.log("Mobile: Valid user, but requires explicit mobile login.");
+                            if (appScreen) appScreen.classList.add('hidden');
+                            if (authScreen) authScreen.classList.remove('hidden');
+                        }
+
+                        const userData = docSnap.data();
+                        const displayName = userData.name || userData.email?.split('@')[0] || 'User';
+                        const displayId = userData.uid?.substring(0, 7).toUpperCase() || '---';
+
+                        const nameEl = document.getElementById('profile-username');
+                        const idEl = document.getElementById('profile-id');
+
+                        if (nameEl) nameEl.innerText = displayName;
+                        if (idEl) idEl.innerText = displayId;
+
+                        // Update KYC Badge
+                        const kycBadge = document.getElementById('cert-status-badge');
+                        if (kycBadge) {
+                            const status = userData.kyc_status || 'Not Verified';
+                            if (status === 'Verified') {
+                                kycBadge.innerHTML = '✅ Verified';
+                                kycBadge.style.background = 'rgba(46, 213, 115, 0.1)';
+                                kycBadge.style.color = '#2ED573';
+                                kycBadge.style.borderColor = 'rgba(46, 213, 115, 0.3)';
+                                kycBadge.removeAttribute('data-t-key');
+                            } else if (status === 'Pending') {
+                                kycBadge.innerHTML = '🕒 Pending';
+                                kycBadge.style.background = 'rgba(255, 171, 0, 0.1)';
+                                kycBadge.style.color = '#FFAB00';
+                                kycBadge.style.borderColor = 'rgba(255, 171, 0, 0.3)';
+                                kycBadge.removeAttribute('data-t-key');
+                            } else if (status === 'Rejected') {
+                                kycBadge.innerHTML = '❌ Rejected';
+                                kycBadge.style.background = 'rgba(255, 77, 79, 0.1)';
+                                kycBadge.style.color = '#FF4757';
+                                kycBadge.style.borderColor = 'rgba(255, 77, 79, 0.3)';
+                                kycBadge.removeAttribute('data-t-key');
+                            } else {
+                                kycBadge.innerHTML = '⚙️ Unauthenticated';
+                                kycBadge.style.background = 'rgba(255, 77, 79, 0.1)';
+                                kycBadge.style.color = '#FF4757';
+                                kycBadge.style.borderColor = 'rgba(255, 77, 79, 0.3)';
+                                kycBadge.setAttribute('data-t-key', 'cert_unauthenticated');
+                            }
+                        }
+
+                        localStorage.setItem('ec_user', user.email);
+                    } else {
+                        // ZOMBIE SESSION: Auth exists but Firestore record is gone
+                        console.warn("Mobile: Auth user exists but Firestore record missing. Signing out for safety.");
+                        signOut(auth);
+                        // Redirect will happen automatically on next onAuthStateChanged(else)
+                    }
+                });
+            } else {
+                console.log("Mobile: No user authenticated, showing login.");
+                if (appScreen) appScreen.classList.add('hidden');
+                if (authScreen) authScreen.classList.remove('hidden');
+            }
+        });
+    </script>
     <style>
         .fintech-icon {
             width: 20px;
@@ -4385,8 +4482,12 @@
                     data-t-key="auth_tab_signup">Create Account</div> -->
             </div>
             <div id="login-form">
+                <div class="signup-sub-tabs" style="margin-bottom: 20px;">
+                    <div class="signup-sub-tab active login-sub-tab" onclick="switchLoginTab('email')">E-mail</div>
+                    <div class="signup-sub-tab login-sub-tab" onclick="switchLoginTab('mobile')">Mobile</div>
+                </div>
                 <div class="auth-form-group"><label data-t-key="auth_label_email">Email Address</label><input
-                        type="email" id="login-email" class="auth-input" placeholder="Enter your email"
+                        type="text" id="login-email" class="auth-input" placeholder="Enter your email"
                         data-t-key="auth_placeholder_email"></div>
                 <div class="auth-form-group"><label data-t-key="auth_label_password">Password</label><input
                         type="password" id="login-password" class="auth-input" placeholder="Enter your password"
@@ -4395,13 +4496,13 @@
             </div>
             <div id="signup-form" class="hidden">
                 <div class="signup-sub-tabs">
-                    <div class="signup-sub-tab active">E-mail</div>
-                    <div class="signup-sub-tab">Mobile</div>
+                    <div class="signup-sub-tab active signup-tab-item" onclick="switchSignupTab('email')">E-mail</div>
+                    <div class="signup-sub-tab signup-tab-item" onclick="switchSignupTab('mobile')">Mobile</div>
                 </div>
 
                 <div class="auth-form-group">
                     <label data-t-key="auth_label_email">Email</label>
-                    <input type="email" id="signup-email" class="auth-input" placeholder="bautistajathrickarl@gmail.com"
+                    <input type="email" id="signup-email" class="auth-input" placeholder="Enter your email"
                         data-t-key="auth_placeholder_email">
                 </div>
 
@@ -5003,7 +5104,7 @@
                         <div class="user-avatar">👤</div>
                         <div class="user-name-box">
                             <h2 id="profile-username">User</h2>
-                            <p>ID: 3942857</p>
+                            <p>ID: <span id="profile-id">---</span></p>
                         </div>
                         <div
                             style="margin-left:auto; background:#eee; padding:5px; border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; color:#6a35ff;">
@@ -5193,7 +5294,8 @@
                     </div>
 
                     <div style="padding: 24px 16px 40px;">
-                        <div class="profile-menu-item" onclick="handleLogout()"
+                        <div class="profile-menu-item"
+                            onclick="import('./firebase-config.js').then(m => m.signOut(m.auth))"
                             style="border: 1px solid #f0f0f0; border-radius: 12px; justify-content: center; background: #fff;">
                             <span class="p-menu-label"
                                 style="color:#FF4757; text-align:center; flex-grow:0; font-weight:700;"
@@ -5729,6 +5831,7 @@
                         <div class="cert-section-title" data-t-key="cert_require" style="color: #ffffff;">
                             Require
                             <span class="cert-badge unauthenticated" data-t-key="cert_unauthenticated"
+                                id="cert-status-badge"
                                 style="background: rgba(255, 77, 79, 0.1); color: #FF4757; border: 1px solid rgba(255, 77, 79, 0.3);">⚙️
                                 Unauthenticated</span>
                         </div>
@@ -5822,7 +5925,7 @@
                         <div class="pwd-group" onclick="showScreen('country-selector')" style="cursor: pointer;">
                             <label class="pwd-label" data-t-key="cert_nationality">Nationality</label>
                             <div class="config-input-box">
-                                <span class="config-readonly" id="selectedNationality">United States</span>
+                                <span class="config-readonly" id="cert-nationality-text">United States</span>
                                 <span style="margin-left:auto; color:#ccc;">&gt;</span>
                             </div>
                         </div>
@@ -5830,8 +5933,8 @@
                         <div class="pwd-group">
                             <label class="pwd-label" data-t-key="cert_legal_name">Full legal name</label>
                             <div class="pwd-input-wrapper">
-                                <input type="text" class="pwd-input" placeholder="Please enter your real name"
-                                    data-t-key="cert_legal_name_placeholder">
+                                <input type="text" id="cert-legal-name" class="pwd-input"
+                                    placeholder="Please enter your real name" data-t-key="cert_legal_name_placeholder">
                                 <span class="pwd-icon-btn">ⓧ</span>
                             </div>
                         </div>
@@ -5839,7 +5942,8 @@
                         <div class="pwd-group">
                             <label class="pwd-label" data-t-key="cert_id_number">Document/passport number</label>
                             <div class="pwd-input-wrapper">
-                                <input type="text" class="pwd-input" placeholder="Please enter your ID/passport number"
+                                <input type="text" id="cert-id-number" class="pwd-input"
+                                    placeholder="Please enter your ID/passport number"
                                     data-t-key="cert_id_number_placeholder">
                                 <span class="pwd-icon-btn">ⓧ</span>
                             </div>
@@ -5886,9 +5990,8 @@
                             </div>
                         </div>
 
-                        <button class="pwd-confirm-btn" style="margin-top: 40px;"
-                            onclick="alert('Certification application submitted!'); goBack();">Apply for
-                            certification</button>
+                        <button class="pwd-confirm-btn" id="submit-kyc-btn" style="margin-top: 40px;"
+                            onclick="submitKYC()">Apply for certification</button>
                     </div>
                 </div>
             </div>
@@ -5907,7 +6010,7 @@
                         style="background: rgba(255, 255, 255, 0.05); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;">
                 </div>
                 <div class="scroll-area" style="background: transparent;">
-                    <div id="country-list" class="list-container"></div>
+                    <div id="country-list" class="list-container pb-8"></div>
                 </div>
             </div>
 
@@ -9262,84 +9365,272 @@
         }
         localStorage.setItem('ec_accounts', JSON.stringify(accounts));
 
-        // AUTO-LOGIN LOGIC
-        (function () {
-            const session = localStorage.getItem('ec_session');
-            const savedUser = localStorage.getItem('ec_user') || 'bautistajathrickarl@gmail.com';
+        // Removed early destructuring to prevent ReferenceError due to module deferred loading.
 
-            if (savedUser) {
-                localStorage.setItem('ec_session', 'true');
-                localStorage.setItem('ec_user', savedUser);
-                setTimeout(openApp, 100);
-            }
-        })();
+        let currentSignupTab = 'email';
 
-        function switchAuthTab(tab) {
-            document.getElementById('auth-tab-login').classList.toggle('active', tab === 'login');
-            // document.getElementById('auth-tab-signup').classList.toggle('active', tab === 'signup');
-            document.getElementById('login-form').classList.toggle('hidden', tab === 'signup');
-            document.getElementById('signup-form').classList.toggle('hidden', tab === 'login');
-            document.getElementById('auth-msg').innerHTML = '';
-        }
-
-        function handleSignup() {
-            const email = document.getElementById('signup-email').value;
+        async function handleSignup() {
+            const rawEmail = document.getElementById('signup-email').value.trim();
             const pass = document.getElementById('signup-password').value;
             const confirm = document.getElementById('signup-confirm').value;
             const otpInput = document.getElementById('signup-otp').value;
             const msg = document.getElementById('auth-msg');
 
-            if (!email || !pass || !otpInput) return msg.innerHTML = '<span class="error-text">Please fill all fields</span>';
+            if (!rawEmail || !pass || !otpInput) return msg.innerHTML = '<span class="error-text">Please fill all fields</span>';
             if (pass !== confirm) return msg.innerHTML = '<span class="error-text">Passwords do not match</span>';
+            if (otpInput !== currentOTP) return msg.innerHTML = '<span class="error-text">Invalid verification code</span>';
 
-            // Verify OTP
-            if (otpInput !== currentOTP) {
-                return msg.innerHTML = '<span class="error-text">Invalid verification code</span>';
+            let finalEmail = rawEmail;
+            let phone = '';
+
+            if (currentSignupTab === 'mobile') {
+                phone = rawEmail; // In mobile tab, the email field contains the phone number
+                if (!phone.startsWith('+')) {
+                    phone = '+1' + phone.replace(/\D/g, '');
+                }
+                finalEmail = `${phone}@mobile.local`;
+            } else {
+                finalEmail = rawEmail.toLowerCase();
             }
 
-            let accountsList = JSON.parse(localStorage.getItem('ec_accounts') || '[]');
-            if (accountsList.some(a => a.email === email)) return msg.innerHTML = '<span class="error-text">Email already exists</span>';
-            accountsList.push({ email, password: pass });
-            localStorage.setItem('ec_accounts', JSON.stringify(accountsList));
-            msg.innerHTML = '<span class="success-text">Account created! Redirecting to login...</span>';
-            setTimeout(() => switchAuthTab('login'), 1500);
+            console.log("Attempting signup with:", finalEmail);
+
+            try {
+                const { auth, db, doc, createUserWithEmailAndPassword, setDoc, signOut } = window.fb;
+                const userCredential = await createUserWithEmailAndPassword(auth, finalEmail, pass);
+                const user = userCredential.user;
+                console.log("Auth user created:", user.uid);
+
+                // Create Firestore document
+                console.log("Setting Firestore document for users/", user.uid);
+                await setDoc(doc(db, 'users', user.uid), {
+                    uid: user.uid,
+                    email: currentSignupTab === 'email' ? finalEmail : '',
+                    phone: phone,
+                    platform: 'Mobile',
+                    name: currentSignupTab === 'email' ? finalEmail.split('@')[0] : 'New Mobile User',
+                    balance: '0.00',
+                    kyc_status: 'Not Verified',
+                    status: 'Active',
+                    role: 'user',
+                    joined: new Date().toISOString()
+                });
+
+                console.log("Firestore sync successful. Signing out for manual login...");
+                await signOut(auth);
+                msg.innerHTML = '<span class="success-text">Account created! Please login.</span>';
+
+                // Switch back to login tab after 2 seconds
+                setTimeout(() => {
+                    const loginTab = document.querySelector('[onclick*="auth-login"]');
+                    if (loginTab) loginTab.click();
+                }, 2000);
+            } catch (error) {
+                console.error("Signup/Sync error:", error);
+                msg.innerHTML = `<span class="error-text">${error.message}</span>`;
+            }
         }
 
-        function handleLogin() {
-            const rawEmail = document.getElementById('login-email').value;
-            const email = rawEmail.trim().toLowerCase();
+        async function handleLogin() {
+            const rawInput = document.getElementById('login-email').value;
+            let input = rawInput.trim();
             const pass = document.getElementById('login-password').value;
             const msg = document.getElementById('auth-msg');
 
-            console.log("Attempting login for:", email);
+            if (!input || !pass) return msg.innerHTML = '<span class="error-text">Please enter credentials</span>';
 
-            // Bypass check for the main registered user
-            if (email === 'bautistajathrickarl@gmail.com') {
-                console.log("Registered user detected, bypassing password check.");
-                localStorage.setItem('ec_session', 'true');
-                localStorage.setItem('ec_user', email);
-                openApp();
-                return;
+            let email = input.toLowerCase();
+            // If input is a phone number (numeric or starting with +), convert to virtual email
+            const isPhone = /^\+?[\d]+$/.test(input);
+            if (isPhone) {
+                let phone = input;
+                if (!phone.startsWith('+')) {
+                    phone = '+1' + phone; // Match signup.html default prefix
+                }
+                email = `${phone}@mobile.local`;
             }
 
-            let accountsList = JSON.parse(localStorage.getItem('ec_accounts') || '[]');
-            const user = accountsList.find(a => a.email.toLowerCase() === email && a.password === pass);
-            if (user) {
-                localStorage.setItem('ec_session', 'true');
-                localStorage.setItem('ec_user', email);
-                openApp();
-            }
-            else {
-                console.log("Login failed: email or password mismatch");
-                msg.innerHTML = '<span class="error-text">Invalid email or password</span>';
+            try {
+                const { auth, db, doc, getDoc, signInWithEmailAndPassword, setDoc } = window.fb;
+                const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+                const user = userCredential.user;
+
+                // AUTO-SYNC Recovery Logic (Mobile)
+                const userDocRef = doc(db, 'users', user.uid);
+                const userDocSnap = await getDoc(userDocRef);
+
+                if (!userDocSnap.exists()) {
+                    console.log("Missing Firestore User detected (Mobile). Syncing...");
+                    await setDoc(userDocRef, {
+                        uid: user.uid,
+                        email: isPhone ? '' : email,
+                        phone: isPhone ? input : '',
+                        platform: 'Mobile (Recovered)',
+                        name: email.split('@')[0],
+                        balance: '0.00',
+                        kyc_status: 'Not Verified',
+                        status: 'Active',
+                        role: 'user',
+                        joined: new Date().toISOString()
+                    });
+                    console.log("Mobile recovery sync complete.");
+                }
+
+                // Explicitly mark this session as authenticated for mobile
+                sessionStorage.setItem('mobile_session_active', 'true');
+
+                // If onAuthStateChanged hasn't fired yet or didn't show the app screen due to the flag, manually trigger the view switch
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('app-screen').classList.remove('hidden');
+
+                // Trigger any initialization functions needed by the app
+                if (typeof openApp === 'function') openApp();
+
+                msg.innerHTML = '<span class="success-text">Login successful!</span>';
+            } catch (error) {
+                console.error("Login error:", error);
+                msg.innerHTML = '<span class="error-text">' + error.message + '</span>';
             }
         }
+
+        // Expose functions to window for HTML onclick handlers
+        window.handleLogin = handleLogin;
+        window.handleSignup = handleSignup;
+        window.handleLogout = handleLogout;
+
+        // KYC Variables and Functions
+        let kycImages = {
+            'adv-front': null,
+            'adv-back': null
+        };
+
+        window.triggerUpload = (type) => {
+            document.getElementById(`input-${type}`).click();
+        };
+
+        window.handleImage = (input, type) => {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const preview = document.getElementById(`preview-${type}`);
+                    // Scale image wrapper down to contain img properly
+                    preview.innerHTML = `<img src="${e.target.result}" style="width: 100%; height: 100%; object-fit: contain; border-radius: 4px;" />`;
+                    kycImages[type] = e.target.result; // Save Base64
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        };
+
+        window.submitKYC = async () => {
+            try {
+                const { auth, db, doc, setDoc, updateDoc } = window.fb;
+                const user = auth.currentUser;
+
+                if (!user) {
+                    return alert("You must be logged in to submit KYC.");
+                }
+
+                const nationality = document.getElementById('cert-nationality-text').innerText.trim();
+                const realName = document.getElementById('cert-legal-name').value.trim();
+                const idNumber = document.getElementById('cert-id-number').value.trim();
+                const frontImage = kycImages['adv-front'];
+                const backImage = kycImages['adv-back'];
+
+                if (!nationality || !realName || !idNumber) {
+                    return alert("Please fill in all text fields.");
+                }
+
+                if (!frontImage || !backImage) {
+                    return alert("Please upload both the front and back of your ID.");
+                }
+
+                const submitBtn = document.getElementById('submit-kyc-btn');
+                submitBtn.disabled = true;
+                submitBtn.innerText = "Submitting...";
+
+                // Create KYC Submission Document
+                const kycDocRef = doc(db, 'kyc_submissions', user.uid);
+                await setDoc(kycDocRef, {
+                    uid: user.uid,
+                    nationality: nationality,
+                    real_name: realName,
+                    id_number: idNumber,
+                    front_image: frontImage,
+                    back_image: backImage,
+                    status: 'Pending',
+                    submitted_at: new Date().toISOString()
+                });
+
+                // Update User Profile Status
+                const userDocRef = doc(db, 'users', user.uid);
+                await updateDoc(userDocRef, {
+                    kyc_status: 'Pending'
+                });
+
+                alert("Certification application submitted successfully!");
+                submitBtn.disabled = false;
+                submitBtn.innerText = "Apply for certification";
+                goBack(); // Close the screen
+
+            } catch (error) {
+                console.error("KYC Submission Error:", error);
+                alert("Submission failed: " + error.message);
+                const submitBtn = document.getElementById('submit-kyc-btn');
+                submitBtn.disabled = false;
+                submitBtn.innerText = "Apply for certification";
+            }
+        };
+
+        window.switchAuthTab = (tab) => {
+            document.getElementById('auth-tab-login').classList.toggle('active', tab === 'login');
+            document.getElementById('login-form').classList.toggle('hidden', tab === 'signup');
+            document.getElementById('signup-form').classList.toggle('hidden', tab === 'login');
+            document.getElementById('auth-msg').innerHTML = '';
+        };
+
+        window.switchLoginTab = (tab) => {
+            const label = document.querySelector('#login-form .auth-form-group:first-child label');
+            const input = document.getElementById('login-email');
+            const tabs = document.querySelectorAll('.login-sub-tab');
+
+            tabs.forEach(t => t.classList.remove('active'));
+            const activeTab = Array.from(tabs).find(t => t.innerText.toLowerCase() === tab);
+            if (activeTab) activeTab.classList.add('active');
+
+            if (tab === 'email') {
+                label.innerText = 'Email Address';
+                input.placeholder = 'Enter your email';
+            } else {
+                label.innerText = 'Mobile Number';
+                input.placeholder = 'Enter your mobile number';
+            }
+            document.getElementById('auth-msg').innerHTML = '';
+        };
+
+        window.switchSignupTab = (tab) => {
+            currentSignupTab = tab;
+            const label = document.querySelector('#signup-form .auth-form-group:first-child label');
+            const input = document.getElementById('signup-email');
+            const tabs = document.querySelectorAll('.signup-tab-item');
+
+            tabs.forEach(t => t.classList.remove('active'));
+            const activeTab = Array.from(tabs).find(t => t.innerText.toLowerCase() === tab);
+            if (activeTab) activeTab.classList.add('active');
+
+            if (tab === 'email') {
+                label.innerText = 'Email Address';
+                input.placeholder = 'Enter your email';
+            } else {
+                label.innerText = 'Mobile Number';
+                input.placeholder = 'Enter your mobile number';
+            }
+            document.getElementById('auth-msg').innerHTML = '';
+        };
 
         function openApp() {
             document.getElementById('auth-screen').classList.add('hidden');
             document.getElementById('app-screen').classList.remove('hidden');
-            const user = localStorage.getItem('ec_user') || 'User';
-            document.getElementById('profile-username').innerText = user.split('@')[0];
+            // Profile Sync is now handled by Firebase in the head section
 
             // Load persistent language
             const savedLang = localStorage.getItem('ec_language') || 'English';
@@ -9360,10 +9651,16 @@
             renderList('hot', 'home-list-box');
         }
 
-        function handleLogout() {
-            localStorage.removeItem('ec_session');
-            localStorage.removeItem('ec_user');
-            location.reload();
+        async function handleLogout() {
+            try {
+                const { auth } = window.fb;
+                sessionStorage.removeItem('mobile_session_active');
+                await auth.signOut();
+                // View switching handled by onAuthStateChanged in the head
+            } catch (error) {
+                console.error("Logout error:", error);
+                location.reload(); // Fallback
+            }
         }
 
         function renderList(type, targetId, filter = '') {
@@ -10133,7 +10430,7 @@
             if (currentScreen === 'market') renderList(currentActiveTab, 'market-list-box', e.target.value);
         });
 
-        if (localStorage.getItem('ec_session') === 'true') openApp();
+        // OPEN RECENT SESSION REMOVED (Legacy openApp not defined)
         function switchTradeFooterTab(tab) {
             const tabs = document.querySelectorAll('.trade-bottom-tabs .tb-tab');
             if (currentContractType === 'perp') {
@@ -10281,19 +10578,23 @@
             const container = document.getElementById('country-list');
             if (!container) return;
             container.innerHTML = '';
+
             const filtered = allCountries.filter(c => c.toLowerCase().includes(filter.toLowerCase()));
+
             if (filtered.length === 0) {
-                container.innerHTML = '<div class="no-results" style="color: #ffffff;">No country found</div>';
+                container.innerHTML = '<div class="no-results" style="color: #ffffff; text-align: center; padding: 20px;">No country found</div>';
                 return;
             }
+
             filtered.forEach(country => {
                 const item = document.createElement('div');
                 item.className = 'market-row';
                 item.style.padding = '16px 0';
                 item.style.cursor = 'pointer';
                 item.style.borderBottom = '1px solid rgba(255, 255, 255, 0.05)';
-                item.onclick = () => selectCountry(country);
-                item.innerHTML = `<span style="font-size: 16px; font-weight: 500; color: #ffffff;">${country}</span>`;
+                // We use onclick to pass the selected country
+                item.onclick = function () { selectCountry(country); };
+                item.innerHTML = `<span style="font-size: 16px; font-weight: 500; color: #ffffff; pointer-events: none;">${country}</span>`;
                 container.appendChild(item);
             });
         }
@@ -10303,7 +10604,12 @@
         }
 
         function selectCountry(country) {
-            document.getElementById('selectedNationality').innerText = country;
+            const displayEl = document.getElementById('cert-nationality-text');
+            if (displayEl) {
+                displayEl.innerText = country;
+            } else {
+                console.warn("cert-nationality-text element not found.");
+            }
             goBack();
         }
 

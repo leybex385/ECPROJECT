@@ -1,0 +1,18 @@
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary
+tmp_out.txt
+temp_about.txt
+.gemini/
+
+# Node (in case they use it later)
+node_modules/
+package-lock.json
+
+# OS files
+.DS_Store
+Thumbs.db

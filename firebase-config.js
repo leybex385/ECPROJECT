@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, getDocs, onSnapshot, doc, setDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, getDocs, onSnapshot, doc, setDoc, getDoc, updateDoc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyBQRl3toKm_L8Nzfi7_73Gl6lHcaJNv1bU",
@@ -29,12 +29,12 @@ function logError(msg) {
 }
 
 // Session Check Helper
-async function checkSession(redirectIfNoSession = true) {
+async function checkSession(redirectIfNoSession = true, redirectUrl = 'login.html') {
     return new Promise((resolve) => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             unsubscribe();
             if (!user && redirectIfNoSession) {
-                window.location.href = 'login.html';
+                window.location.href = redirectUrl;
             }
             resolve(user);
         });
@@ -53,4 +53,4 @@ async function handleLogout() {
 
 window.handleLogout = handleLogout; // Expose for inline onclick handlers
 
-export { auth, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, collection, addDoc, getDocs, onSnapshot, doc, setDoc, getDoc, updateDoc, checkSession, logError };
+export { auth, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, collection, addDoc, getDocs, onSnapshot, doc, setDoc, getDoc, updateDoc, deleteDoc, query, where, checkSession, logError };

@@ -198,6 +198,12 @@
 
 <body>
 
+    <div id="cors-warning"
+        style="display: none; background: #ff4444; color: #fff; padding: 15px; text-align: center; position: sticky; top: 0; left: 0; width: 100%; z-index: 9999; font-weight: bold; border-bottom: 2px solid #fff;">
+        ⚠️ SECURITY BLOCKED: Login & Database Sync will NOT work if opened directly.
+        <br>Please run <code>server.bat</code> and use <code>http://localhost:8000/login.html</code>
+    </div>
+
     <nav class="topbar">
         <a href="index.html" class="t-logo">
             <svg width="24" height="24" viewBox="0 0 40 40" fill="none">
@@ -261,16 +267,16 @@
         </header>
 
         <div class="auth-tabs" id="auth-tabs">
-            <div class="auth-tab" data-tab="email">E-mail</div>
+            <div class="auth-tab active" data-tab="email">E-mail</div>
             <div class="auth-tab" data-tab="mobile">Mobile</div>
-            <div class="auth-tab active" data-tab="account">Account</div>
+            <div class="auth-tab" data-tab="account">Account</div>
         </div>
 
         <form id="login-form">
             <!-- Email Section -->
-            <div class="form-group identifier-section" id="email-section">
+            <div class="form-group identifier-section active" id="email-section">
                 <label>Email</label>
-                <input type="email" class="form-input" placeholder="name@example.com">
+                <input type="email" id="email-login-input" class="form-input" placeholder="name@example.com">
             </div>
 
             <!-- Mobile Section (US +1) -->
@@ -284,9 +290,10 @@
             </div>
 
             <!-- Account Section -->
-            <div class="form-group identifier-section active" id="account-section">
+            <div class="form-group identifier-section" id="account-section">
                 <label>Account</label>
-                <input type="text" class="form-input" placeholder="Please enter your account number">
+                <input type="text" id="account-login-input" class="form-input"
+                    placeholder="Please enter your account number">
             </div>
 
             <div class="form-group" id="password-group">
@@ -325,7 +332,14 @@
     </footer>
 
     <script type="module">
-        import { auth, signInWithEmailAndPassword, checkSession } from './firebase-config.js';
+        import { auth, db, doc, getDoc, setDoc, signInWithEmailAndPassword, checkSession } from './firebase-config.js';
+
+        // Protocol check for CORS issues
+        if (window.location.protocol === 'file:') {
+            const warning = document.getElementById('cors-warning');
+            if (warning) warning.style.display = 'block';
+            console.error("Firebase won't work on file:// protocol. Use http://localhost:8000");
+        }
 
         // Session check on page load
         async function checkInitialSession() {
@@ -343,7 +357,7 @@
         const forgotPasswordLink = document.getElementById('forgot-password-link');
         const mainSubmitBtn = document.getElementById('main-submit-btn');
 
-        let currentTab = 'account';
+        let currentTab = 'email';
 
         tabs.forEach(tab => {
             tab.addEventListener('click', () => {
@@ -360,21 +374,54 @@
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const identifierInput = document.querySelector(`#${currentTab}-section input`);
-            const passwordInput = document.getElementById('login-password');
+            // Determine identifier based on active tab
+            let identifier = '';
+            if (currentTab === 'email') {
+                identifier = document.getElementById('email-login-input').value.trim();
+            } else if (currentTab === 'mobile') {
+                identifier = document.getElementById('mobile-login-input').value.trim();
+                if (!identifier.startsWith('+')) identifier = '+1' + identifier.replace(/\D/g, '');
+                identifier = identifier + "@mobile.local";
+            } else if (currentTab === 'account') {
+                identifier = document.getElementById('account-login-input').value.trim();
+            }
 
-            let identifier = identifierInput.value.trim();
+            const passwordInput = document.getElementById('login-password');
             const password = passwordInput.value;
 
-            // Handle "+1" prefix format if Mobile tab is active
-            if (currentTab === 'mobile') {
-                if (!identifier.startsWith('+')) identifier = '+1' + identifier.replace(/\D/g, '');
-                identifier = identifier + "@mobile.local"; // Setup a pseudo-email for easy login structure if needed
+            if (!identifier || !password) {
+                alert("Please enter both credentials and password.");
+                return;
             }
 
             try {
                 // Assuming standard Email login (or a fake email mapped from phone: +1123456789@mobile.local)
-                await signInWithEmailAndPassword(auth, identifier, password);
+                const userCredential = await signInWithEmailAndPassword(auth, identifier, password);
+                const user = userCredential.user;
+
+                // AUTO-SYNC Recovery Logic: 
+                // If user exists in Auth but missing in Firestore (e.g. from a failed CORS registration)
+                const userDocRef = doc(db, 'users', user.uid);
+                const userDocSnap = await getDoc(userDocRef);
+
+                if (!userDocSnap.exists()) {
+                    console.log("Partial Registration Detected: Auto-syncing user to Firestore...");
+                    await setDoc(userDocRef, {
+                        uid: user.uid,
+                        email: identifier.includes('@mobile.local') ? '' : identifier,
+                        phone: identifier.includes('@mobile.local') ? identifier.split('@')[0] : '',
+                        platform: 'Website (Recovered)',
+                        name: identifier.split('@')[0],
+                        balance: '0.00',
+                        kyc_status: 'Not Verified',
+                        status: 'Active',
+                        role: 'user',
+                        joined: new Date().toISOString()
+                    });
+                    console.log("User recovery sync complete.");
+                }
+
+                sessionStorage.removeItem('mobile_session_active');
 
                 alert("Login successful!");
                 window.location.href = 'markets.html';

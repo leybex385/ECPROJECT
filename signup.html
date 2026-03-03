@@ -185,6 +185,13 @@
 
 <body>
 
+    <div id="cors-warning"
+        style="display: none; background: #ff4444; color: #fff; padding: 15px; text-align: center; position: sticky; top: 0; left: 0; width: 100%; z-index: 9999; font-weight: bold; border-bottom: 2px solid #fff;">
+        ⚠️ SECURITY BLOCKED: You are opening this file directly. "Send Code" and Registration will NOT work.
+        <br>Please run <code style="background: rgba(0,0,0,0.2); padding: 2px 5px;">server.bat</code> and use <code
+            style="background: rgba(0,0,0,0.2); padding: 2px 5px;">http://localhost:8000/signup.html</code>
+    </div>
+
     <nav class="topbar">
         <a href="index.html" class="t-logo">
             <svg width="24" height="24" viewBox="0 0 40 40" fill="none">
@@ -231,7 +238,8 @@
                     </a>
                 </div>
             </div>
-            <a href="mobile.html" class="t-link">Mobile</a>
+        </div>
+        <a href="mobile.html" class="t-link">Mobile</a>
         </div>
         <div class="t-actions">
             <a href="login.html" class="t-link">Login</a>
@@ -314,8 +322,15 @@
 
     <script type="module">
         // Import checkSession as well to import full firebase configuration
-        import { auth, createUserWithEmailAndPassword } from './firebase-config.js';
+        import { auth, createUserWithEmailAndPassword, db, doc, setDoc, signOut } from './firebase-config.js';
         import { RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+        // Protocol check for CORS issues
+        if (window.location.protocol === 'file:') {
+            const warning = document.getElementById('cors-warning');
+            if (warning) warning.style.display = 'block';
+            console.error("Firebase won't work on file:// protocol. Use http://localhost:8000");
+        }
 
         // Tab Switching Logic
         const tabs = document.querySelectorAll('.auth-tab');
@@ -488,11 +503,30 @@
             }
 
             try {
-                // To safely get userCredential if needed: const userCredential = await ...
+                console.log("Signup: Creating auth user with", finalEmail);
                 const userCredential = await createUserWithEmailAndPassword(auth, finalEmail, pass1);
+                const user = userCredential.user;
+                console.log("Signup: Auth user created successfully:", user.uid);
+
+                // Save user metadata to Firestore
+                console.log("Signup: Syncing user to Firestore collection 'users'...");
+                await setDoc(doc(db, 'users', user.uid), {
+                    uid: user.uid,
+                    email: currentTab === 'email' ? finalEmail : '',
+                    phone: currentTab === 'mobile' ? mobileInput.value.trim() : '',
+                    platform: 'Website',
+                    name: 'New User',
+                    balance: '0.00',
+                    kyc_status: 'Not Verified',
+                    status: 'Active',
+                    role: 'user',
+                    joined: new Date().toISOString()
+                });
+                console.log("Signup: Firestore sync complete. Signing out for manual login...");
+                sessionStorage.removeItem('mobile_session_active');
+                await signOut(auth);
 
                 if (currentTab === 'email') {
-                    // Since verification was already completed by OTP via EmailJS, we just display success
                     alert("Account successfully created and verified! You can now login.");
                 } else {
                     alert("Signup successful! You can now login.");
@@ -500,6 +534,7 @@
 
                 window.location.href = 'login.html';
             } catch (error) {
+                console.error("Signup/Sync Error:", error);
                 alert("Signup failed: " + error.message);
             }
         });
