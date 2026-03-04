@@ -1299,7 +1299,7 @@
                                     <th>Time</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="recentActivityTable">
                                 <tr>
                                     <td colspan="6" class="text-center text-gray-400 py-8">
                                         No recent activity recorded.
@@ -1473,13 +1473,14 @@
                     </div>
                 </div>
 
-                <div class="filter-tabs">
-                    <button class="filter-btn active">All Contracts</button>
-                    <button class="filter-btn">Pending</button>
-                    <button class="filter-btn">Approved</button>
-                    <button class="filter-btn">Rejected</button>
-                    <button class="filter-btn">Open Positions</button>
-                    <button class="filter-btn">Closed</button>
+                <div class="filter-tabs" id="contractFilters">
+                    <button class="filter-btn active" onclick="setContractFilter('All', this)">All Contracts</button>
+                    <button class="filter-btn" onclick="setContractFilter('Perpetual', this)">Perpetual</button>
+                    <button class="filter-btn" onclick="setContractFilter('Delivery', this)">Delivery Contract</button>
+                    <button class="filter-btn" onclick="setContractFilter('Pending', this)">Pending</button>
+                    <button class="filter-btn" onclick="setContractFilter('Win', this)">Win</button>
+                    <button class="filter-btn" onclick="setContractFilter('Lose', this)">Lose</button>
+                    <button class="filter-btn" onclick="setContractFilter('Open', this)">Open Positions</button>
                 </div>
 
                 <div class="card">
@@ -1855,15 +1856,15 @@
 
 
 
-                <div class="filter-tabs">
-                    <button class="filter-btn active">All Requests</button>
-                    <button class="filter-btn">Pending</button>
-                    <button class="filter-btn">Processing</button>
-                    <button class="filter-btn">Completed</button>
-                    <button class="filter-btn">Rejected</button>
-                    <button class="filter-btn">Mobile Users</button>
-                    <button class="filter-btn">Website Users</button>
-                    <button class="filter-btn">High Amount (>$10K)</button>
+                <div class="filter-tabs" id="withdrawalFilters">
+                    <button class="filter-btn active" onclick="setWithdrawFilter('All', this)">All Requests</button>
+                    <button class="filter-btn" onclick="setWithdrawFilter('Pending', this)">Pending</button>
+                    <button class="filter-btn" onclick="setWithdrawFilter('Processing', this)">Processing</button>
+                    <button class="filter-btn" onclick="setWithdrawFilter('Completed', this)">Completed</button>
+                    <button class="filter-btn" onclick="setWithdrawFilter('Rejected', this)">Rejected</button>
+                    <button class="filter-btn" onclick="setWithdrawFilter('Mobile', this)">Mobile Users</button>
+                    <button class="filter-btn" onclick="setWithdrawFilter('Website', this)">Website Users</button>
+                    <button class="filter-btn" onclick="setWithdrawFilter('High', this)">High Amount (>$10K)</button>
                 </div>
 
                 <div class="card">
@@ -2314,6 +2315,72 @@
         </div>
     </div>
 
+    <!-- Custom Close Price Modal -->
+    <!-- Unified Contract Outcome Modal -->
+    <!-- Specialized Contract Outcome Modal -->
+    <div class="modal-overlay" id="contractOperateModal">
+        <div class="modal">
+            <div class="modal-header border-b pb-4">
+                <h3 class="text-xl font-bold text-gray-800" id="operateModalTitle">Contract Outcome Management</h3>
+                <button onclick="closeModal('contractOperateModal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="ri-close-line text-2xl"></i>
+                </button>
+            </div>
+            <div class="modal-body space-y-6 pt-4">
+                <input type="hidden" id="operateTradeId">
+                <input type="hidden" id="operateTradeType">
+
+                <!-- Position Info Title/Subtitle -->
+                <div class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="block text-sm font-medium text-gray-500">Position</label>
+                        <p id="operatePositionLabel" class="font-bold text-[#6a35ff] text-lg">---</p>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="block text-sm font-medium text-gray-500">Entry Price</label>
+                        <p id="operateEntryPrice" class="text-gray-600 font-medium">Entry: ---</p>
+                    </div>
+                </div>
+
+                <!-- Perpetual Section (Matches Picture 2) -->
+                <div id="viewPerpetualOperate" class="space-y-5">
+                    <div class="form-group border-t pt-2">
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Custom Closing Price *</label>
+                        <input type="number" id="operateCustomPrice" step="0.0001"
+                            placeholder="Enter price to force win/loss"
+                            class="w-full border border-gray-200 rounded-lg px-4 py-3 focus:ring-2 focus:ring-[#6a35ff] focus:border-transparent outline-none text-gray-800 transition-all shadow-sm">
+                        <p class="text-xs text-gray-400 mt-2 leading-relaxed">Setting this price will override the
+                            market price when the user or system closes the position.</p>
+                    </div>
+                </div>
+
+                <!-- Delivery Section (Matches Picture 3 style) -->
+                <div id="viewDeliveryOperate" class="space-y-5 hidden">
+                    <div class="form-group">
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Delivery Contract Rule</label>
+                        <select id="operateDeliveryStrategy"
+                            class="w-full border border-gray-200 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm">
+                            <option value="normal">Normal (Market Price)</option>
+                            <option value="win">Always Win</option>
+                            <option value="loss">Always Lose</option>
+                        </select>
+                        <p class="text-xs text-gray-400 mt-2 leading-relaxed">Select the guaranteed outcome for this
+                            specific delivery contract.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer flex gap-3 pt-6">
+                <button onclick="closeModal('contractOperateModal')"
+                    class="flex-1 py-3 border border-[#6a35ff] text-[#6a35ff] font-bold rounded-xl hover:bg-purple-50 transition-colors">Cancel</button>
+                <button
+                    class="flex-1 py-3 bg-[#6a35ff] text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-[#5a2de0] shadow-lg shadow-purple-100 transition-all"
+                    id="operateApplyBtn" onclick="saveContractOutcome()">
+                    <i class="ri-check-line"></i><span id="operateApplyBtnText">Apply Override</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- QR Code Modal -->
     <div class="modal-overlay" id="qrModal">
         <div class="modal">
@@ -2433,6 +2500,72 @@
     <script type="module">
         import { auth, signOut, checkSession, db, collection, onSnapshot, doc, updateDoc, deleteDoc, getDoc, setDoc, query, orderBy, addDoc, serverTimestamp, increment } from '../firebase-config.js';
 
+        window.dashboardData = {
+            trades: [],
+            withdrawals: [],
+            deposits: [],
+            kyc: []
+        };
+
+        window.updateRecentActivity = function () {
+            const container = document.getElementById('recentActivityTable');
+            if (!container) return;
+
+            // Flatten and tag all activities
+            let allActivity = [
+                ...window.dashboardData.trades.map(t => ({ ...t, actType: 'Trade' })),
+                ...window.dashboardData.withdrawals.map(w => ({ ...w, actType: 'Withdrawal' })),
+                ...window.dashboardData.deposits.map(d => ({ ...d, actType: 'Deposit' })),
+                ...window.dashboardData.kyc.map(k => ({ ...k, actType: 'KYC' }))
+            ];
+
+            // Sort by timestamp descending
+            allActivity.sort((a, b) => {
+                const getTime = (x) => {
+                    if (x.timestamp && x.timestamp.seconds) return x.timestamp.seconds;
+                    if (x.submitted_at) return new Date(x.submitted_at).getTime() / 1000;
+                    if (x.created_at) return new Date(x.created_at).getTime() / 1000;
+                    return 0;
+                };
+                return getTime(b) - getTime(a);
+            });
+
+            // Take top 10
+            const recent = allActivity.slice(0, 10);
+
+            if (recent.length === 0) {
+                container.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400 py-8">No recent activity recorded.</td></tr>';
+                return;
+            }
+
+            let html = '';
+            recent.forEach(act => {
+                const user = act.user_email || act.email || act.uid?.substring(0, 8) || 'User';
+                const platform = act.platform || 'System';
+                const amount = act.amount ? `${act.amount} ${act.coin || ''}` : '---';
+                const time = act.timestamp ? new Date(act.timestamp.seconds * 1000).toLocaleString() :
+                    (act.submitted_at ? new Date(act.submitted_at).toLocaleString() : '---');
+
+                let statusClass = 'bg-gray-100 text-gray-800';
+                const status = act.status || 'Pending';
+                if (status === 'Approved' || status === 'Completed' || status === 'Win' || status === 'Open') statusClass = 'bg-green-100 text-green-800';
+                if (status === 'Rejected' || status === 'Lose' || status === 'Failed') statusClass = 'bg-red-100 text-red-800';
+                if (status === 'Pending') statusClass = 'bg-yellow-100 text-yellow-800';
+
+                html += `
+                    <tr class="border-b border-gray-100 hover:bg-gray-50">
+                        <td><p class="font-medium text-gray-800">${user}</p></td>
+                        <td class="text-sm text-gray-600">${act.actType}</td>
+                        <td><span class="px-2 py-0.5 rounded text-[10px] font-bold ${platform === 'Mobile' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}">${platform}</span></td>
+                        <td class="font-semibold text-gray-700">${amount}</td>
+                        <td><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusClass}">${status}</span></td>
+                        <td class="text-xs text-gray-500">${time}</td>
+                    </tr>
+                `;
+            });
+            container.innerHTML = html;
+        };
+
         // Expose Firebase functions to window for UI handlers
         window._db = db;
         window._doc = doc;
@@ -2525,22 +2658,62 @@
             onSnapshot(collection(db, 'deposits'), (snapshot) => {
                 window.lastDepositSnapshot = snapshot;
                 renderDeposits(snapshot);
+
+                // Update Dashboard Data
+                window.dashboardData.deposits = [];
+                snapshot.forEach(doc => window.dashboardData.deposits.push(doc.data()));
+                window.updateRecentActivity();
             }, (error) => {
                 console.error("Admin: Deposit listener error:", error);
             });
 
             // Sync Pending Withdrawals
+            window.withdrawFilter = 'All';
+            window.lastWithdrawSnapshot = null;
+
             onSnapshot(collection(db, 'withdrawals'), (snapshot) => {
+                window.lastWithdrawSnapshot = snapshot;
+                renderWithdrawals(snapshot);
+
+                // Update Dashboard Data
+                window.dashboardData.withdrawals = [];
+                snapshot.forEach(doc => window.dashboardData.withdrawals.push(doc.data()));
+                window.updateRecentActivity();
+
                 let pendingCount = 0;
                 snapshot.forEach(doc => {
                     if (doc.data().status === 'Pending') pendingCount++;
                 });
                 const el = document.getElementById('db-pending-withdrawals');
                 if (el) el.innerText = pendingCount;
+                const badgeEl = document.querySelector('#withdrawals .status-badge');
+                if (badgeEl) badgeEl.innerText = `${pendingCount} Pending`;
             });
 
+            window.setWithdrawFilter = function (filter, btn) {
+                window.withdrawFilter = filter;
+                document.querySelectorAll('#withdrawalFilters .filter-btn').forEach(b => b.classList.remove('active'));
+                if (btn) btn.classList.add('active');
+                if (window.lastWithdrawSnapshot) {
+                    renderWithdrawals(window.lastWithdrawSnapshot);
+                }
+            };
+
             // Sync Total Volume and Contracts
-            onSnapshot(collection(db, 'trades'), (snapshot) => {
+            window.currentContractFilter = 'All';
+            window.lastTradesSnapshot = null;
+
+            window.setContractFilter = function (filter, btn) {
+                window.currentContractFilter = filter;
+                document.querySelectorAll('#contractFilters .filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                if (window.lastTradesSnapshot) {
+                    window.renderContractsTable(window.lastTradesSnapshot);
+                }
+            };
+
+            window.renderContractsTable = function (snapshot) {
+                window.lastTradesSnapshot = snapshot;
                 let totalVolume = 0;
                 let html = '';
                 let openCount = 0;
@@ -2549,21 +2722,50 @@
                 let rejectedCount = 0;
 
                 const contractsTable = document.getElementById('contractsTable');
+                window.tradeDataMap = window.tradeDataMap || {};
 
                 snapshot.forEach(doc => {
                     const data = doc.data();
+                    window.tradeDataMap[doc.id] = { ...data, id: doc.id };
                     const amount = parseFloat(data.amount) || 0;
                     totalVolume += amount;
 
                     const status = data.status || 'Pending';
+                    const type = data.type || 'Perpetual';
+
+                    // Statistical counts (independent of filter)
                     if (status === 'Open') openCount++;
                     else if (status === 'Pending') pendingCount++;
                     else if (status === 'Approved') approvedCount++;
                     else if (status === 'Rejected') rejectedCount++;
+                    else if (status === 'Closed') {
+                        if (data.final_pnl >= 0) approvedCount++;
+                        else rejectedCount++;
+                    }
+
+                    // Filtering Logic
+                    let show = false;
+                    const f = window.currentContractFilter;
+                    if (f === 'All') show = true;
+                    else if (f === 'Perpetual' && type === 'Perpetual') show = true;
+                    else if (f === 'Delivery' && type === 'Delivery') show = true;
+                    else if (f === 'Pending' && status === 'Pending') show = true;
+                    else if (f === 'Open' && status === 'Open') show = true;
+                    else if (f === 'Win' && (status === 'Approved' || (status === 'Closed' && data.final_pnl >= 0))) show = true;
+                    else if (f === 'Lose' && (status === 'Rejected' || (status === 'Closed' && data.final_pnl < 0))) show = true;
+
+                    if (!show) return;
+
+                    let displayStatus = status;
+                    if (displayStatus === 'Approved') displayStatus = 'Win';
+                    if (displayStatus === 'Rejected') displayStatus = 'Lose';
+                    if (displayStatus === 'Closed') {
+                        displayStatus = (data.final_pnl >= 0) ? 'Win' : 'Lose';
+                    }
 
                     let statusClass = 'bg-yellow-100 text-yellow-800';
-                    if (status === 'Approved' || status === 'Open') statusClass = 'bg-green-100 text-green-800';
-                    if (status === 'Rejected') statusClass = 'bg-red-100 text-red-800';
+                    if (displayStatus === 'Win' || status === 'Open') statusClass = 'bg-green-100 text-green-800';
+                    if (displayStatus === 'Lose') statusClass = 'bg-red-100 text-red-800';
 
                     const side = data.direction || data.side || '---';
                     const sideClass = side.toLowerCase().includes('long') ? 'text-green-600' : 'text-red-600';
@@ -2579,14 +2781,20 @@
                             <td>${amount}</td>
                             <td>$${parseFloat(data.price || 0).toLocaleString()}</td>
                             <td>$${parseFloat(data.price || 0).toLocaleString()}</td>
-                            <td class="${sideClass}">$0.00</td>
-                            <td><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusClass}">${status}</span></td>
+                            <td class="${sideClass}">
+                                $0.00
+                                ${data.customClosePrice ? `<br><span class="text-[10px] text-orange-600 font-bold bg-orange-50 px-1 rounded border border-orange-100 uppercase">Fixed @ ${data.customClosePrice}</span>` : ''}
+                                ${data.admin_outcome === 'win' ? `<br><span class="text-[10px] text-green-600 font-bold bg-green-50 px-1 rounded border border-green-100 uppercase">Forced Win</span>` : ''}
+                                ${data.admin_outcome === 'loss' ? `<br><span class="text-[10px] text-red-600 font-bold bg-red-50 px-1 rounded border border-red-100 uppercase">Forced Loss</span>` : ''}
+                            </td>
+                            <td><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusClass}">${displayStatus}</span></td>
                             <td>
                                 <div class="flex gap-2">
-                                    <button class="action-btn text-green-600 hover:bg-green-50" title="Approve" onclick="approveContract('${doc.id}')"><i class="ri-check-line"></i></button>
-                                    <button class="action-btn text-red-600 hover:bg-red-50" title="Reject" onclick="rejectContract('${doc.id}')"><i class="ri-close-line"></i></button>
-                                    <button class="action-btn text-blue-600 hover:bg-blue-50" title="Set Win" onclick="setDeliveryWin('${doc.id}')"><i class="ri-arrow-up-line"></i></button>
-                                    <button class="action-btn text-pink-600 hover:bg-pink-50" title="Set Loss" onclick="setDeliveryLoss('${doc.id}')"><i class="ri-arrow-down-line"></i></button>
+                                    <button class="action-btn text-purple-600 hover:bg-purple-50 flex items-center gap-1 text-xs font-bold border border-purple-100 px-3 py-1.5" 
+                                            onclick="openOperateModal('${doc.id}')">
+                                        <i class="ri-settings-4-line text-sm"></i>
+                                        OPERATE
+                                    </button>
                                 </div>
                             </td>
                         </tr>
@@ -2597,7 +2805,7 @@
                 if (el) el.innerText = `$${totalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
                 if (html === '') {
-                    html = '<tr><td colspan="10" class="text-center text-gray-400 py-12">No active contract positions.</td></tr>';
+                    html = '<tr><td colspan="10" class="text-center text-gray-400 py-12">No data matching filters.</td></tr>';
                 }
                 if (contractsTable) contractsTable.innerHTML = html;
 
@@ -2608,6 +2816,15 @@
                     contractStats[2].innerText = approvedCount;
                     contractStats[3].innerText = rejectedCount;
                 }
+
+                // Update Dashboard Data
+                window.dashboardData.trades = [];
+                snapshot.forEach(doc => window.dashboardData.trades.push(doc.data()));
+                window.updateRecentActivity();
+            };
+
+            onSnapshot(collection(db, 'trades'), (snapshot) => {
+                window.renderContractsTable(snapshot);
             });
 
             // Sync KYC Submissions
@@ -2679,6 +2896,11 @@
                 document.getElementById('kyc-rejected-count').innerText = rejectedCount;
 
                 document.querySelector('.status-badge.status-pending').innerText = `${pendingCount} Pending`;
+
+                // Update Dashboard Data
+                window.dashboardData.kyc = [];
+                snapshot.forEach(doc => window.dashboardData.kyc.push(doc.data()));
+                window.updateRecentActivity();
             });
 
             // Sync Support Chats
@@ -2853,9 +3075,91 @@
             document.getElementById('editUserBalance').value = user.balance || 0;
             document.getElementById('editUserStatus').value = user.status || 'Active';
             document.getElementById('editUserKyc').value = user.kyc_status || 'None';
-            document.getElementById('editUserDeliveryRule').value = user.delivery_rule || 'normal';
+
+            // Set rules
+            // Set rules
+            if (document.getElementById('editUserPerpetualPrice')) {
+                document.getElementById('editUserPerpetualPrice').value = user.perpetual_custom_price || '';
+            }
+            if (document.getElementById('editUserDeliveryRule')) {
+                document.getElementById('editUserDeliveryRule').value = user.delivery_rule || 'normal';
+            }
+
+            // Reset tab to Perpetual
+            window.switchUserRuleTab('perpetual');
+
+            // Render Active Trades for this user
+            renderActiveUserTrades(uid);
 
             document.getElementById('editUserModal').classList.add('active');
+        };
+
+        function renderActiveUserTrades(uid) {
+            const containerP = document.getElementById('editUserActivePerpetual');
+            const containerD = document.getElementById('editUserActiveDelivery');
+            containerP.innerHTML = '';
+            containerD.innerHTML = '';
+
+            const trades = Object.values(window.tradeDataMap || {}).filter(t => (t.user_uid === uid || t.uid === uid) && t.status === 'Open');
+
+            trades.forEach(trade => {
+                const isPerp = (trade.type === 'Perpetual');
+                const container = isPerp ? containerP : containerD;
+
+                const entryVal = parseFloat(trade.price || 0);
+                const formattedEntry = entryVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                const html = `
+                    <div class="active-trade-item border-t border-dashed pt-4 mt-2" data-trade-id="${trade.id}">
+                        <div class="mb-3">
+                            <label class="block text-[10px] uppercase font-bold text-gray-400 tracking-widest">Active Position</label>
+                            <p class="font-bold text-[#6a35ff] text-base">${trade.coin || trade.pair}/USDT ${trade.type} ${trade.direction || trade.side || ''}</p>
+                            <p class="text-gray-500 text-xs font-semibold mt-1">Entry: ${formattedEntry}</p>
+                        </div>
+                        ${isPerp ? `
+                            <div class="form-group">
+                                <label class="block text-sm font-bold text-gray-700 mb-1">Custom Closing Price</label>
+                                <input type="number" step="0.0001" value="${trade.customClosePrice || ''}"
+                                    placeholder="Set price for this specific trade"
+                                    class="trade-custom-price-input w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#6a35ff] outline-none text-sm shadow-sm">
+                            </div>
+                        ` : `
+                            <div class="form-group">
+                                <label class="block text-sm font-bold text-gray-700 mb-1">Force Outcome</label>
+                                <select class="trade-outcome-select w-full border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none text-sm shadow-sm">
+                                    <option value="normal" ${!trade.admin_outcome || trade.admin_outcome === 'normal' ? 'selected' : ''}>Normal</option>
+                                    <option value="win" ${trade.admin_outcome === 'win' ? 'selected' : ''}>Force Win</option>
+                                    <option value="loss" ${trade.admin_outcome === 'loss' ? 'selected' : ''}>Force Loss</option>
+                                </select>
+                            </div>
+                        `}
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', html);
+            });
+
+            if (trades.length > 0) {
+                // Adjust modal height or scroll if needed
+            }
+        }
+
+        window.switchUserRuleTab = function (type) {
+            const tabP = document.getElementById('tabPerpetual');
+            const tabD = document.getElementById('tabDelivery');
+            const secP = document.getElementById('sectionPerpetualRule');
+            const secD = document.getElementById('sectionDeliveryRule');
+
+            if (type === 'perpetual') {
+                tabP.className = "px-4 py-2 font-semibold text-sm border-b-2 border-purple-600 text-purple-600 transition-colors";
+                tabD.className = "px-4 py-2 font-semibold text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors";
+                secP.classList.remove('hidden');
+                secD.classList.add('hidden');
+            } else {
+                tabD.className = "px-4 py-2 font-semibold text-sm border-b-2 border-blue-600 text-blue-600 transition-colors";
+                tabP.className = "px-4 py-2 font-semibold text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors";
+                secD.classList.remove('hidden');
+                secP.classList.add('hidden');
+            }
         };
 
         window.saveUserChanges = async function () {
@@ -2863,14 +3167,15 @@
             if (!uid) return;
 
             const btn = document.getElementById('saveUserBtn');
-            const originalText = btn.innerText;
-            btn.innerText = 'Saving...';
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="ri-loader-4-line animate-spin"></i> Saving...';
             btn.disabled = true;
 
             const name = document.getElementById('editUserName').value;
             const balance = document.getElementById('editUserBalance').value;
             const status = document.getElementById('editUserStatus').value;
             const kyc = document.getElementById('editUserKyc').value;
+            const perpetualPrice = document.getElementById('editUserPerpetualPrice').value;
             const deliveryRule = document.getElementById('editUserDeliveryRule').value;
 
             try {
@@ -2879,15 +3184,37 @@
                     balance: parseFloat(balance) || 0,
                     status: status,
                     kyc_status: kyc,
+                    perpetual_custom_price: perpetualPrice ? parseFloat(perpetualPrice) : null,
                     delivery_rule: deliveryRule
                 });
-                alert('User details updated successfully!');
+
+                // Update individual trade overrides if any
+                const tradeItems = document.querySelectorAll('.active-trade-item');
+                for (const item of tradeItems) {
+                    const tid = item.getAttribute('data-trade-id');
+                    const priceInput = item.querySelector('.trade-custom-price-input');
+                    const outcomeSelect = item.querySelector('.trade-outcome-select');
+
+                    const tradeUpdate = {};
+                    if (priceInput) {
+                        tradeUpdate.customClosePrice = priceInput.value ? parseFloat(priceInput.value) : null;
+                    }
+                    if (outcomeSelect) {
+                        tradeUpdate.admin_outcome = outcomeSelect.value === 'normal' ? null : outcomeSelect.value;
+                    }
+
+                    if (Object.keys(tradeUpdate).length > 0) {
+                        await window._updateDoc(window._doc(window._db, 'trades', tid), tradeUpdate);
+                    }
+                }
+
+                alert('User details and active trade configurations updated successfully!');
                 closeModal('editUserModal');
             } catch (err) {
                 console.error("Update Error:", err);
                 alert("Failed to update user: " + err.message);
             } finally {
-                btn.innerText = originalText;
+                btn.innerHTML = originalHTML;
                 btn.disabled = false;
             }
         };
@@ -3248,25 +3575,73 @@
             }
         };
 
-        window.setDeliveryWin = async function (tradeId) {
-            if (confirm('Force this contract to WIN?')) {
-                try {
-                    await window._updateDoc(window._doc(window._db, 'trades', tradeId), { admin_outcome: 'win' });
-                    alert('Contract set to WIN');
-                } catch (error) {
-                    alert('Error setting win: ' + error.message);
-                }
+        window.openOperateModal = function (tradeId) {
+            const trade = window.tradeDataMap[tradeId];
+            if (!trade) return;
+
+            const category = trade.type || 'Perpetual';
+            const titleEl = document.getElementById('operateModalTitle');
+            const viewP = document.getElementById('viewPerpetualOperate');
+            const viewD = document.getElementById('viewDeliveryOperate');
+            const applyBtnText = document.getElementById('operateApplyBtnText');
+
+            document.getElementById('operateTradeId').value = tradeId;
+            document.getElementById('operateTradeType').value = category;
+
+            // Format labels to match Picture 2 & 3
+            document.getElementById('operatePositionLabel').innerText = `${trade.coin || trade.pair}/USDT ${category} ${trade.direction || trade.side || ''}`;
+
+            // Format entry price accurately: Entry: 68,542.00
+            const entryVal = parseFloat(trade.price || 0);
+            const formattedEntry = entryVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            document.getElementById('operateEntryPrice').innerText = `Entry: ${formattedEntry}`;
+
+            if (category === 'Perpetual') {
+                titleEl.innerText = "Set Custom Close Price";
+                applyBtnText.innerText = "Apply Override";
+                viewP.classList.remove('hidden');
+                viewD.classList.add('hidden');
+
+                // Populate data
+                document.getElementById('operateCustomPrice').value = trade.customClosePrice || '';
+            } else {
+                titleEl.innerText = "Set Win/Loss Outcome";
+                applyBtnText.innerText = "Save Changes";
+                viewD.classList.remove('hidden');
+                viewP.classList.add('hidden');
+
+                // Populate data
+                document.getElementById('operateDeliveryStrategy').value = trade.admin_outcome || 'normal';
             }
+
+            document.getElementById('contractOperateModal').classList.add('active');
         };
 
-        window.setDeliveryLoss = async function (tradeId) {
-            if (confirm('Force this contract to LOSE?')) {
-                try {
-                    await window._updateDoc(window._doc(window._db, 'trades', tradeId), { admin_outcome: 'loss' });
-                    alert('Contract set to LOSS');
-                } catch (error) {
-                    alert('Error setting loss: ' + error.message);
-                }
+        window.saveContractOutcome = async function () {
+            const tradeId = document.getElementById('operateTradeId').value;
+            const category = document.getElementById('operateTradeType').value;
+
+            let strategy = 'normal';
+            let customPrice = null;
+
+            if (category === 'Perpetual') {
+                customPrice = document.getElementById('operateCustomPrice').value;
+            } else {
+                strategy = document.getElementById('operateDeliveryStrategy').value;
+            }
+
+            const updateData = {
+                admin_outcome: strategy === 'normal' ? null : strategy,
+                customClosePrice: (category === 'Perpetual' && customPrice) ? parseFloat(customPrice) : null
+            };
+
+            try {
+                // Ensure we use the global Firebase functions correctly
+                await window._updateDoc(window._doc(window._db, 'trades', tradeId), updateData);
+                alert("Trade configuration applied successfully.");
+                closeModal('contractOperateModal');
+            } catch (e) {
+                alert("Failed to save configuration: " + e.message);
             }
         };
 
@@ -3582,13 +3957,128 @@
         function rejectVoucher() { const reason = prompt('Enter rejection reason:'); if (reason) alert('Voucher rejected. Reason: ' + reason); }
 
         // Withdrawal Functions
-        function viewWithdrawal(id) {
-            document.getElementById('wId').textContent = '#' + id;
-            document.getElementById('withdrawalModal').classList.add('active');
+        function renderWithdrawals(snapshot) {
+            const tableBody = document.getElementById('withdrawalsTable');
+            let html = '';
+            let totalWithdrawals = 0;
+
+            snapshot.forEach(docSnap => {
+                const data = docSnap.id === 'INITIAL_SETUP' ? null : docSnap.data();
+                if (!data) return;
+
+                const id = docSnap.id;
+                const amount = parseFloat(data.amount) || 0;
+                const status = data.status || 'Pending';
+                const platform = data.platform || 'Mobile';
+
+                // Filtering
+                let show = false;
+                const f = window.withdrawFilter;
+                if (f === 'All') show = true;
+                else if (f === 'High' && amount >= 10000) show = true;
+                else if (f === 'Mobile' && platform === 'Mobile') show = true;
+                else if (f === 'Website' && platform === 'Website') show = true;
+                else if (status === f) show = true;
+
+                if (!show) return;
+
+                if (status === 'Completed') totalWithdrawals += amount;
+
+                const date = data.timestamp ? new Date(data.timestamp.seconds * 1000).toLocaleString() : '---';
+
+                html += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${id.substring(0, 8)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${data.user_email || '---'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <span class="platform-badge platform-${platform.toLowerCase()}">${platform}</span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${data.coin} (${data.chain})</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">${amount.toFixed(2)} ${data.coin}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">${data.address}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${status === 'Completed' ? 'bg-green-100 text-green-800' : (status === 'Rejected' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800')}">
+                                ${status}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${date}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <div class="flex justify-end gap-2">
+                                <button onclick="viewWithdrawal('${id}')" class="text-purple-600 hover:text-purple-900"><i class="ri-eye-line text-lg"></i></button>
+                                ${status === 'Pending' ? `
+                                    <button onclick="handleApproveWithdrawal('${id}', '${data.user_uid}', ${amount})" class="text-green-600 hover:text-green-900"><i class="ri-check-line text-lg"></i></button>
+                                    <button onclick="handleRejectWithdrawal('${id}')" class="text-red-600 hover:text-red-900"><i class="ri-close-line text-lg"></i></button>
+                                ` : ''}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            if (tableBody) tableBody.innerHTML = html || '<tr><td colspan="9" class="text-center text-gray-400 py-12">No matching withdrawal requests found.</td></tr>';
+
+            const totalEl = document.querySelector('#withdrawals .text-2xl.font-bold.text-gray-800:last-child');
+            // Assuming the 5th card is Total Amount based on the HTML grid
+            const cards = document.querySelectorAll('#withdrawals .card p.text-2xl.font-bold');
+            if (cards.length >= 5) {
+                cards[4].innerText = `$${totalWithdrawals.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+            }
         }
 
-        function approveWithdrawal() { if (confirm('Approve this withdrawal?')) { alert('Withdrawal approved!'); closeModal('withdrawalModal'); } }
-        function rejectWithdrawal() { const reason = prompt('Enter rejection reason:'); if (reason) { alert('Withdrawal rejected. Reason: ' + reason); closeModal('withdrawalModal'); } }
+        window.handleApproveWithdrawal = async function (id, uid, amount) {
+            if (!confirm(`Approve withdrawal of ${amount}? THIS WILL DEDUCT from user balance.`)) return;
+            try {
+                // 1. Update status
+                await window._updateDoc(window._doc(window._db, 'withdrawals', id), { status: 'Completed' });
+                // 2. Deduct balance
+                await window._updateDoc(window._doc(window._db, 'users', uid), { balance: window._increment(-amount) });
+                alert("Withdrawal approved and balance deducted.");
+            } catch (e) {
+                alert("Error: " + e.message);
+            }
+        };
+
+        window.handleRejectWithdrawal = async function (id) {
+            const reason = prompt("Reason for rejection:");
+            if (reason === null) return;
+            try {
+                await window._updateDoc(window._doc(window._db, 'withdrawals', id), { status: 'Rejected', rejection_reason: reason });
+                alert("Withdrawal rejected.");
+            } catch (e) {
+                alert("Error: " + e.message);
+            }
+        };
+
+        function viewWithdrawal(id) {
+            window._getDoc(window._doc(window._db, 'withdrawals', id)).then(snap => {
+                if (snap.exists()) {
+                    const data = snap.data();
+                    document.getElementById('wId').textContent = '#' + id;
+                    document.getElementById('wUser').textContent = `${data.user_email || 'User'} (${data.user_uid.substring(0, 8)}...)`;
+                    document.getElementById('wPlatform').innerHTML = `<span class="platform-badge platform-${data.platform.toLowerCase()}">${data.platform}</span>`;
+                    document.getElementById('wCrypto').textContent = `${data.coin} (${data.chain})`;
+                    document.getElementById('wAmount').textContent = `${data.amount} ${data.coin}`;
+                    document.getElementById('wStatus').textContent = data.status;
+                    document.getElementById('wStatus').className = `status-badge status-${data.status.toLowerCase()}`;
+                    document.getElementById('wAddress').textContent = data.address;
+
+                    // Update buttons in modal to use the correct ID/UID/Amount
+                    const footer = document.querySelector('#withdrawalModal .flex.gap-4');
+                    if (data.status === 'Pending') {
+                        footer.style.display = 'flex';
+                        footer.innerHTML = `
+                            <button class="btn-success" onclick="handleApproveWithdrawal('${id}', '${data.user_uid}', ${data.amount}); closeModal('withdrawalModal');"><i class="ri-check-line mr-2"></i>Approve</button>
+                            <button class="btn-danger" onclick="handleRejectWithdrawal('${id}'); closeModal('withdrawalModal');"><i class="ri-close-line mr-2"></i>Reject</button>
+                        `;
+                    } else {
+                        footer.style.display = 'none';
+                    }
+
+                    document.getElementById('withdrawalModal').classList.add('active');
+                }
+            });
+        }
+
         function copyWithdrawalAddress() { navigator.clipboard.writeText(document.getElementById('wAddress').textContent); alert('Address copied!'); }
 
         // Deposit UI Helpers (Standard functions)
@@ -3734,19 +4224,67 @@
                         <option value="None">None</option>
                     </select>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Delivery Contract Rule</label>
-                    <select id="editUserDeliveryRule" class="w-full border rounded p-2">
-                        <option value="normal">Normal (Market Price)</option>
-                        <option value="win">Always Win</option>
-                        <option value="loss">Always Lose</option>
-                    </select>
+                <!-- Contract Rules Tabs -->
+                <div class="mt-6">
+                    <div class="flex border-b border-gray-200 mb-4">
+                        <button onclick="switchUserRuleTab('perpetual')" id="tabPerpetual"
+                            class="px-4 py-2 font-semibold text-sm border-b-2 border-purple-600 text-purple-600 transition-colors">PERPETUAL</button>
+                        <button onclick="switchUserRuleTab('delivery')" id="tabDelivery"
+                            class="px-4 py-2 font-semibold text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors">DELIVERY
+                            CONTRACT</button>
+                    </div>
+
+                    <!-- Perpetual Rule Section (Matches Picture 2 Content Requirement) -->
+                    <div id="sectionPerpetualRule" class="space-y-4">
+                        <div class="bg-purple-50 p-3 rounded-lg border border-purple-100 mb-3">
+                            <p class="text-xs text-purple-700 font-medium"><i class="ri-information-line mr-1"></i>
+                                Global custom price for all future Perpetual trades by this user.</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Default Custom Close Price
+                                (Optional)</label>
+                            <input type="number" id="editUserPerpetualPrice" step="0.0001"
+                                placeholder="Force all future trades to this price"
+                                class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-purple-500 outline-none shadow-sm">
+                            <p class="text-[10px] text-gray-400 mt-1">If set, every new Perpetual trade for this user
+                                will inherit this price.</p>
+                        </div>
+
+                        <!-- Active Perpetual Trades Container -->
+                        <div id="editUserActivePerpetual" class="pt-4 space-y-4">
+                            <!-- Dynamically populated -->
+                        </div>
+                    </div>
+
+                    <!-- Delivery Rule Section (Hidden by default) -->
+                    <div id="sectionDeliveryRule" class="space-y-4 hidden">
+                        <div class="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-3">
+                            <p class="text-xs text-blue-700 font-medium"><i class="ri-information-line mr-1"></i> Global
+                                rule for all future Delivery trades by this user.</p>
+                        </div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Delivery Contract Rule</label>
+                        <select id="editUserDeliveryRule"
+                            class="w-full border rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="normal">Normal (Market Price)</option>
+                            <option value="win">Always Win</option>
+                            <option value="loss">Always Lose</option>
+                        </select>
+
+                        <!-- Active Delivery Trades Container -->
+                        <div id="editUserActiveDelivery" class="pt-4 space-y-4">
+                            <!-- Dynamically populated -->
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button onclick="closeModal('editUserModal')" class="btn-secondary">Cancel</button>
-                <button id="saveUserBtn" onclick="saveUserChanges()" class="btn-primary"
-                    style="background: #6a35ff; color: #fff;">Save Changes</button>
+            <div class="modal-footer flex gap-3 pt-6 bg-white sticky bottom-0 border-t border-gray-50">
+                <button onclick="closeModal('editUserModal')"
+                    class="flex-1 py-3 border border-gray-300 text-gray-600 font-bold rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
+                <button onclick="saveUserChanges()" id="saveUserBtn"
+                    style="background-color: #6a35ff; box-shadow: 0 4px 15px rgba(106, 53, 255, 0.2);"
+                    class="flex-1 py-3 text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all">
+                    <i class="ri-check-line"></i>Apply Override
+                </button>
             </div>
         </div>
     </div>

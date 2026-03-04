@@ -344,9 +344,9 @@
         // Session check on page load
         async function checkInitialSession() {
             const user = await checkSession(false);
-            // If already logged in, go to markets
+            // If already logged in, go to dashboard
             if (user) {
-                window.location.href = 'markets.html';
+                window.location.href = 'dashboard.html';
             }
         }
         checkInitialSession();
@@ -424,7 +424,7 @@
                 sessionStorage.removeItem('mobile_session_active');
 
                 alert("Login successful!");
-                window.location.href = 'markets.html';
+                window.location.href = 'dashboard.html';
             } catch (error) {
                 alert("Login failed: " + error.message);
             }

@@ -22,7 +22,7 @@
         }
     </script>
     <script type="module">
-        import { auth, db, doc, onSnapshot, onAuthStateChanged, signOut, getDoc, signInWithEmailAndPassword, createUserWithEmailAndPassword, setDoc, updateDoc, RecaptchaVerifier, signInWithPhoneNumber, checkSession, collection, addDoc, serverTimestamp } from './firebase-config.js';
+        import { auth, db, doc, onSnapshot, onAuthStateChanged, signOut, getDoc, signInWithEmailAndPassword, createUserWithEmailAndPassword, setDoc, updateDoc, RecaptchaVerifier, signInWithPhoneNumber, checkSession, collection, addDoc, serverTimestamp, increment } from './firebase-config.js';
 
         // Expose to global window for legacy scripts
         window.fb = { auth, db, doc, onSnapshot, onAuthStateChanged, signOut, getDoc, signInWithEmailAndPassword, createUserWithEmailAndPassword, setDoc, updateDoc, RecaptchaVerifier, signInWithPhoneNumber, collection, addDoc, serverTimestamp };
@@ -35,6 +35,8 @@
         window.collection = collection;
         window.addDoc = addDoc;
         window.serverTimestamp = serverTimestamp;
+        window.auth = auth;
+        window.onAuthStateChanged = onAuthStateChanged;
 
         // Initialize reCAPTCHA (Required for Phone Auth)
         window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
@@ -1387,6 +1389,115 @@
             height: 3px;
             background: #6a35ff;
             border-radius: 2px;
+        }
+
+        /* --- TRADE RESULT MODAL --- */
+        #trade-result-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            /* Darker overlay for focus */
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 11000;
+            transition: all 0.3s ease;
+        }
+
+        .result-modal-box {
+            width: 85%;
+            max-width: 320px;
+            background: #1a0b2e;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 24px;
+            padding: 32px 24px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            animation: modalScale 0.3s ease-out;
+        }
+
+        @keyframes modalScale {
+            from {
+                transform: scale(0.8);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .result-icon-circle {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            margin: 0 auto 20px;
+        }
+
+        .result-icon-win {
+            background: rgba(46, 213, 115, 0.1);
+            color: #2ED573;
+            border: 2px solid rgba(46, 213, 115, 0.3);
+        }
+
+        .result-icon-lose {
+            background: rgba(255, 71, 87, 0.1);
+            color: #FF4757;
+            border: 2px solid rgba(255, 71, 87, 0.3);
+        }
+
+        .result-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .result-symbol {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 24px;
+        }
+
+        .result-pnl-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.4);
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .result-pnl-value {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 32px;
+        }
+
+        .result-btn-confirm {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #6a35ff 0%, #00d4ff 100%);
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(106, 53, 255, 0.3);
+            transition: transform 0.2s;
+        }
+
+        .result-btn-confirm:active {
+            transform: scale(0.98);
         }
 
         .history-label {
@@ -3478,13 +3589,18 @@
 
         /* FORCE TRADE SCREEN TOP ALIGNMENT */
         #trade-screen,
-        #trade-spot-content,
-        .trading-container {
+        #trade-spot-content {
             justify-content: flex-start !important;
             align-items: stretch !important;
             height: auto !important;
             min-height: 100% !important;
             flex-grow: 1;
+        }
+
+        .trading-container {
+            display: flex;
+            align-items: flex-start;
+            min-height: auto !important;
         }
 
         /* --- WITHDRAW SCREEN STYLES --- */
@@ -8566,272 +8682,359 @@
                 <span onclick="showScreen('history')" style="cursor:pointer;">🕒</span>
             </div>
 
-            <!-- SPOT LAYOUT -->
-            <div id="trade-spot-content" class="scroll-area"
-                style="background: #1a0b2e; display: flex; flex-direction: column;">
-                <div class="trading-container">
-                    <div class="trade-form">
-                        <div class="trade-pair-header">
-                            <span onclick="openPairPanel()" style="cursor: pointer;">⇌</span>
-                            <b>BTC/USDT</b>
-                            <span id="trade-pair-change" style="color: #999; font-size: 14px;">0.00%</span>
-                        </div>
-
-                        <div class="buy-sell-toggle">
-                            <div id="spot-buy-tab" class="bs-btn buy active" onclick="setTradeMode('buy')">Buy</div>
-                            <div id="spot-sell-tab" class="bs-btn sell" onclick="setTradeMode('sell')">Sell</div>
-                        </div>
-
-                        <div class="dropdown-container">
-                            <div class="trade-input-group"
-                                style="justify-content: space-between; color: #fff; margin-bottom: 0; cursor: pointer;"
-                                onclick="toggleOrderTypeDropdown(event)">
-                                <span id="trade-order-type-label"
-                                    style="color: #fff; font-weight: 600; font-size: 16px;">Market
-                                    Order</span>
-                                <span style="font-size: 10px;">▼</span>
+            <div class="scroll-area" style="flex-grow: 1; display: flex; flex-direction: column; background: #1a0b2e;">
+                <!-- SPOT LAYOUT -->
+                <div id="trade-spot-content" style="display: flex; flex-direction: column;">
+                    <div class="trading-container">
+                        <div class="trade-form">
+                            <div class="trade-pair-header">
+                                <span onclick="openPairPanel()" style="cursor: pointer;">⇌</span>
+                                <b>BTC/USDT</b>
+                                <span id="trade-pair-change" style="color: #999; font-size: 14px;">0.00%</span>
                             </div>
-                            <div id="trade-order-dropdown" class="trade-dropdown-menu">
-                                <div class="dropdown-option" onclick="selectOrderType('Market Order')">
-                                    Market Order
+
+                            <div class="buy-sell-toggle">
+                                <div id="spot-buy-tab" class="bs-btn buy active" onclick="setTradeMode('buy')">Buy</div>
+                                <div id="spot-sell-tab" class="bs-btn sell" onclick="setTradeMode('sell')">Sell</div>
+                            </div>
+
+                            <div class="dropdown-container">
+                                <div class="trade-input-group"
+                                    style="justify-content: space-between; color: #fff; margin-bottom: 0; cursor: pointer;"
+                                    onclick="toggleOrderTypeDropdown(event)">
+                                    <span id="trade-order-type-label"
+                                        style="color: #fff; font-weight: 600; font-size: 16px;">Market
+                                        Order</span>
+                                    <span style="font-size: 10px;">▼</span>
                                 </div>
-                                <div class="dropdown-option" onclick="selectOrderType('Limit Order')">Limit
-                                    Order
+                                <div id="trade-order-dropdown" class="trade-dropdown-menu">
+                                    <div class="dropdown-option" onclick="selectOrderType('Market Order')">
+                                        Market Order
+                                    </div>
+                                    <div class="dropdown-option" onclick="selectOrderType('Limit Order')">Limit
+                                        Order
+                                    </div>
                                 </div>
                             </div>
+
+                            <div class="trade-input-group" onclick="this.querySelector('input').focus()">
+                                <span class="input-label">Price</span>
+                                <input type="text" id="trade-price-input" value="0.00" readonly
+                                    style="color:#666 !important; cursor: default;">
+                                <span class="unit-span">USDT</span>
+                            </div>
+
+                            <div class="trade-input-group" onclick="this.querySelector('input').focus()">
+                                <span class="input-label">Amount</span>
+                                <input type="number" id="trade-amount-input" placeholder="0.00" step="any">
+                                <span class="unit-span">USDT</span>
+                            </div>
+
+                            <input type="range" id="trade-slider-input" class="trade-slider-input" min="0" max="100"
+                                value="0" oninput="updateTradeSlider(this.value)">
+                            <div class="slider-labels" id="trade-slider-labels">
+                                <span
+                                    class="active">0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+                            </div>
+
+                            <p style="font-size: 12px; color: #999; margin: 16px 0;">Available 0.00 USDT <span
+                                    style="color: #6a35ff; margin-left: 4px;">⇌</span></p>
+
+                            <button id="spot-action-btn"
+                                style="width: 100%; background: #2ED573; color: #fff; border: none; border-radius: 6px; padding: 12px; font-weight: 700; font-size: 16px; transition: all 0.2s ease-in-out;">Buy</button>
                         </div>
 
-                        <div class="trade-input-group" onclick="this.querySelector('input').focus()">
-                            <span class="input-label">Price</span>
-                            <input type="text" id="trade-price-input" value="0.00" readonly
-                                style="color:#666 !important; cursor: default;">
-                            <span class="unit-span">USDT</span>
+                        <div class="order-book right-panel">
+                            <div class="ob-header">
+                                <span>Price (USDT)</span>
+                                <span style="text-align: right;">Number (<span
+                                        id="trade-orderbook-coin">ETH</span>)</span>
+                            </div>
+                            <div class="ob-row"><span class="price-green">0.00</span><span>0.00</span></div>
+                            <div class="ob-row"><span class="price-green">0.00</span><span>0.00</span></div>
+                            <div class="ob-row"><span class="price-green">0.00</span><span>0.00</span></div>
+                            <div class="ob-row"><span class="price-green">0.00</span><span>0.00</span></div>
+                            <div class="ob-row"><span class="price-green">0.00</span><span>0.00</span></div>
+                            <div class="ob-row"><span class="price-green">0.00</span><span>0.00</span></div>
+
+
+                            <div class="ob-row"><span class="price-red">0.00</span><span>0.00</span></div>
+                            <div class="ob-row"><span class="price-red">0.00</span><span>0.00</span></div>
+                            <div class="ob-row"><span class="price-red">0.00</span><span>0.00</span></div>
+                            <div class="ob-row"><span class="price-red">0.00</span><span>0.00</span></div>
+                            <div class="ob-row"><span class="price-red">0.00</span><span>0.00</span></div>
+                            <div class="ob-row"><span class="price-red">0.00</span><span>0.00</span></div>
                         </div>
-
-                        <div class="trade-input-group" onclick="this.querySelector('input').focus()">
-                            <span class="input-label">Amount</span>
-                            <input type="number" id="trade-amount-input" placeholder="0.00" step="any">
-                            <span class="unit-span">USDT</span>
-                        </div>
-
-                        <input type="range" id="trade-slider-input" class="trade-slider-input" min="0" max="100"
-                            value="0" oninput="updateTradeSlider(this.value)">
-                        <div class="slider-labels" id="trade-slider-labels">
-                            <span
-                                class="active">0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
-                        </div>
-
-                        <p style="font-size: 12px; color: #999; margin: 16px 0;">Available 0.00 USDT <span
-                                style="color: #6a35ff; margin-left: 4px;">⇌</span></p>
-
-                        <button id="spot-action-btn"
-                            style="width: 100%; background: #2ED573; color: #fff; border: none; border-radius: 6px; padding: 12px; font-weight: 700; font-size: 16px; transition: all 0.2s ease-in-out;">Buy</button>
-                    </div>
-
-                    <div class="order-book right-panel">
-                        <div class="ob-header">
-                            <span>Price (USDT)</span>
-                            <span style="text-align: right;">Number (<span id="trade-orderbook-coin">ETH</span>)</span>
-                        </div>
-                        <div class="ob-row"><span class="price-green">0.00</span><span>0.00</span></div>
-                        <div class="ob-row"><span class="price-green">0.00</span><span>0.00</span></div>
-                        <div class="ob-row"><span class="price-green">0.00</span><span>0.00</span></div>
-                        <div class="ob-row"><span class="price-green">0.00</span><span>0.00</span></div>
-                        <div class="ob-row"><span class="price-green">0.00</span><span>0.00</span></div>
-                        <div class="ob-row"><span class="price-green">0.00</span><span>0.00</span></div>
-
-
-                        <div class="ob-row"><span class="price-red">0.00</span><span>0.00</span></div>
-                        <div class="ob-row"><span class="price-red">0.00</span><span>0.00</span></div>
-                        <div class="ob-row"><span class="price-red">0.00</span><span>0.00</span></div>
-                        <div class="ob-row"><span class="price-red">0.00</span><span>0.00</span></div>
-                        <div class="ob-row"><span class="price-red">0.00</span><span>0.00</span></div>
-                        <div class="ob-row"><span class="price-red">0.00</span><span>0.00</span></div>
                     </div>
                 </div>
-            </div>
 
-            <div id="trade-exchange-content" class="scroll-area hidden"
-                style="padding: 20px 16px; background: #1a0b2e; flex-grow: 1; display: flex; flex-direction: column;">
+                <div id="trade-exchange-content" class="hidden"
+                    style="padding: 20px 16px; display: flex; flex-direction: column;">
 
-                <!-- FROM SECTION -->
-                <div style="margin-bottom: 16px;">
-                    <p
-                        style="font-size: 12px; color: #999; margin-bottom: 10px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px;">
-                        From</p>
-                    <div
-                        style="display: flex; align-items: center; background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 8px; transition: border-color 0.3s;">
-                        <div onclick="openCoinModal('from')"
-                            style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding-right: 12px; border-right: 1px solid rgba(255,255,255,0.05);">
-                            <div id="ex-from-icon"
-                                style="width: 26px; height: 26px; background: #26a17b; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: 600;">
-                                T</div>
-                            <span id="ex-from-symbol"
-                                style="font-size: 15px; font-weight: 500; color: #fff;">USDT</span>
-                            <span style="color: #6a35ff; font-size: 10px;">▼</span>
+                    <!-- FROM SECTION -->
+                    <div style="margin-bottom: 16px;">
+                        <p
+                            style="font-size: 12px; color: #999; margin-bottom: 10px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px;">
+                            From</p>
+                        <div
+                            style="display: flex; align-items: center; background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 8px; transition: border-color 0.3s;">
+                            <div onclick="openCoinModal('from')"
+                                style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding-right: 12px; border-right: 1px solid rgba(255,255,255,0.05);">
+                                <div id="ex-from-icon"
+                                    style="width: 26px; height: 26px; background: #26a17b; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: 600;">
+                                    T</div>
+                                <span id="ex-from-symbol"
+                                    style="font-size: 15px; font-weight: 500; color: #fff;">USDT</span>
+                                <span style="color: #6a35ff; font-size: 10px;">▼</span>
+                            </div>
+                            <div
+                                style="flex-grow: 1; text-align: right; padding-left: 12px; display: flex; align-items: center;">
+                                <input type="text" placeholder="0"
+                                    style="width: 100%; border: none; background: transparent; text-align: right; outline: none; font-size: 18px; font-weight: 500; color: #fff; font-variant-numeric: tabular-nums;">
+                                <span
+                                    style="color: #6a35ff; font-weight: 600; font-size: 12px; margin-left: 12px; cursor: pointer; text-transform: uppercase;">max</span>
+                            </div>
                         </div>
                         <div
-                            style="flex-grow: 1; text-align: right; padding-left: 12px; display: flex; align-items: center;">
-                            <input type="text" placeholder="0"
-                                style="width: 100%; border: none; background: transparent; text-align: right; outline: none; font-size: 18px; font-weight: 500; color: #fff; font-variant-numeric: tabular-nums;">
-                            <span
-                                style="color: #6a35ff; font-weight: 600; font-size: 12px; margin-left: 12px; cursor: pointer; text-transform: uppercase;">max</span>
+                            style="display: flex; justify-content: space-between; align-items: center; padding: 0 4px;">
+                            <p style="font-size: 12px; color: #999; margin: 0;">Quantity Available</p>
+                            <p style="font-size: 12px; color: #fff; font-weight: 500; margin: 0;"><span
+                                    id="ex-available-text">0 USDT</span></p>
                         </div>
                     </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 4px;">
-                        <p style="font-size: 12px; color: #999; margin: 0;">Quantity Available</p>
-                        <p style="font-size: 12px; color: #fff; font-weight: 500; margin: 0;"><span
-                                id="ex-available-text">0 USDT</span></p>
-                    </div>
-                </div>
 
-                <!-- SWAP ICON -->
-                <div style="text-align: center; margin: 8px 0;">
-                    <button onclick="swapExchangeCoins()"
-                        style="width: 36px; height: 36px; background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.4); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; color: #6a35ff; cursor: pointer; box-shadow: 0 0 15px rgba(106, 53, 255, 0.1); transition: all 0.2s;">
-                        ⇅
+                    <!-- SWAP ICON -->
+                    <div style="text-align: center; margin: 8px 0;">
+                        <button onclick="swapExchangeCoins()"
+                            style="width: 36px; height: 36px; background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.4); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; color: #6a35ff; cursor: pointer; box-shadow: 0 0 15px rgba(106, 53, 255, 0.1); transition: all 0.2s;">
+                            ⇅
+                        </button>
+                    </div>
+
+                    <!-- TO SECTION -->
+                    <div style="margin-bottom: 32px;">
+                        <p
+                            style="font-size: 12px; color: #999; margin-bottom: 10px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px;">
+                            To</p>
+                        <div
+                            style="display: flex; align-items: center; background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.3); border-radius: 10px; padding: 14px;">
+                            <div onclick="openCoinModal('to')"
+                                style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding-right: 12px; border-right: 1px solid rgba(255,255,255,0.05);">
+                                <div id="ex-to-icon"
+                                    style="width: 26px; height: 26px; background: #f7931a; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: 600;">
+                                    ₿</div>
+                                <span id="ex-to-symbol"
+                                    style="font-size: 15px; font-weight: 500; color: #fff;">BTC</span>
+                                <span style="color: #6a35ff; font-size: 10px;">▼</span>
+                            </div>
+                            <div style="flex-grow: 1; text-align: right; padding-left: 12px;">
+                                <input type="text" placeholder="0" disabled
+                                    style="width: 100%; border: none; background: transparent; text-align: right; outline: none; font-size: 18px; font-weight: 500; color: #999; font-variant-numeric: tabular-nums;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ACTION BUTTON -->
+                    <button onclick="alert('Insufficient balance')" class="pwd-confirm-btn"
+                        style="margin-top: auto; border-radius: 10px; background: linear-gradient(135deg, #6a35ff 0%, #a044ff 100%); box-shadow: 0 6px 20px rgba(106, 53, 255, 0.25); border: none; padding: 16px; font-weight: 600; font-size: 16px; color: #fff; cursor: pointer;">
+                        Exchange
                     </button>
                 </div>
 
-                <!-- TO SECTION -->
-                <div style="margin-bottom: 32px;">
-                    <p
-                        style="font-size: 12px; color: #999; margin-bottom: 10px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px;">
-                        To</p>
-                    <div
-                        style="display: flex; align-items: center; background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.3); border-radius: 10px; padding: 14px;">
-                        <div onclick="openCoinModal('to')"
-                            style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding-right: 12px; border-right: 1px solid rgba(255,255,255,0.05);">
-                            <div id="ex-to-icon"
-                                style="width: 26px; height: 26px; background: #f7931a; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: 600;">
-                                ₿</div>
-                            <span id="ex-to-symbol" style="font-size: 15px; font-weight: 500; color: #fff;">BTC</span>
-                            <span style="color: #6a35ff; font-size: 10px;">▼</span>
-                        </div>
-                        <div style="flex-grow: 1; text-align: right; padding-left: 12px;">
-                            <input type="text" placeholder="0" disabled
-                                style="width: 100%; border: none; background: transparent; text-align: right; outline: none; font-size: 18px; font-weight: 500; color: #999; font-variant-numeric: tabular-nums;">
-                        </div>
+                <!-- CONTRACT LAYOUT -->
+                <div id="trade-contract-content" class="hidden" style="display: flex; flex-direction: column;">
+                    <div class="trade-pair-header" style="padding: 16px 16px 0 16px; margin-bottom: 8px;">
+                        <span onclick="openPairPanel()" style="cursor: pointer;">⇌</span>
+                        <b style="font-weight: 500;">BTC/USDT</b>
+                        <span id="contract-header-type"
+                            style="color: #fff; font-weight: normal; margin-left: 6px;">Perpetual</span>
+                        <span id="contract-change-text" class="price-green" style="font-size: 14px;">+1.09%</span>
+                        <span onclick="showKLine()"
+                            style="margin-left:auto; font-size:20px; color:#999; display:flex; gap: 8px; cursor:pointer;">📊</span>
                     </div>
-                </div>
+                    <div class="trading-container">
+                        <div class="trade-form">
 
-                <!-- ACTION BUTTON -->
-                <button onclick="alert('Insufficient balance')" class="pwd-confirm-btn"
-                    style="margin-top: auto; border-radius: 10px; background: linear-gradient(135deg, #6a35ff 0%, #a044ff 100%); box-shadow: 0 6px 20px rgba(106, 53, 255, 0.25); border: none; padding: 16px; font-weight: 600; font-size: 16px; color: #fff; cursor: pointer;">
-                    Exchange
-                </button>
-            </div>
-
-            <!-- CONTRACT LAYOUT -->
-            <div id="trade-contract-content" class="scroll-area hidden"
-                style="background: #1a0b2e; display: flex; flex-direction: column;">
-                <div class="trade-pair-header" style="padding: 16px 16px 0 16px; margin-bottom: 8px;">
-                    <span onclick="openPairPanel()" style="cursor: pointer;">⇌</span>
-                    <b style="font-weight: 500;">BTC/USDT</b>
-                    <span id="contract-header-type"
-                        style="color: #fff; font-weight: normal; margin-left: 6px;">Perpetual</span>
-                    <span id="contract-change-text" class="price-green" style="font-size: 14px;">+1.09%</span>
-                    <span onclick="showKLine()"
-                        style="margin-left:auto; font-size:20px; color:#999; display:flex; gap: 8px; cursor:pointer;">📊</span>
-                </div>
-                <div class="trading-container">
-                    <div class="trade-form">
-
-                        <div style="display:flex; gap: 10px; margin-bottom: 16px;">
-                            <button id="perp-type-btn" onclick="switchContractType('perp')"
-                                style="flex:1; padding: 10px; background: linear-gradient(135deg, #6a35ff 0%, #a044ff 100%); color: #fff; border: 1px solid transparent; border-radius: 6px; font-weight: 500; font-size: 14px;">Perpetual</button>
-                            <button id="deliv-type-btn" onclick="switchContractType('deliv')"
-                                style="flex:1; padding: 10px; background: #1a0b2e; color: #999; border: 1px solid rgba(106, 53, 255, 0.3); border-radius: 6px; font-weight:500; font-size: 14px;">Delivery
-                                contract</button>
-                        </div>
-
-                        <div id="perp-form-content">
                             <div style="display:flex; gap: 10px; margin-bottom: 16px;">
-                                <button
-                                    style="width: 80px; padding: 8px; background: #1a0b2e; color: #fff; border: 1px solid rgba(106, 53, 255, 0.3); border-radius: 4px; font-weight:500; font-size: 13px;">Cross</button>
-                                <div style="position:relative; width:80px;">
-                                    <select onchange="changeLeverage(this.value)"
-                                        style="position:absolute; width:100%; height:100%; opacity:0; left:0; top:0; z-index:10; font-size:16px; background: #1a0b2e; color: #fff;">
-                                        <option value="1">1x</option>
-                                        <option value="5">5x</option>
-                                        <option value="10">10x</option>
-                                        <option value="25">25x</option>
-                                        <option value="50">50x</option>
-                                        <option value="100">100x</option>
-                                        <option value="125">125x</option>
-                                    </select>
+                                <button id="perp-type-btn" onclick="switchContractType('perp')"
+                                    style="flex:1; padding: 10px; background: linear-gradient(135deg, #6a35ff 0%, #a044ff 100%); color: #fff; border: 1px solid transparent; border-radius: 6px; font-weight: 500; font-size: 14px;">Perpetual</button>
+                                <button id="deliv-type-btn" onclick="switchContractType('deliv')"
+                                    style="flex:1; padding: 10px; background: #1a0b2e; color: #999; border: 1px solid rgba(106, 53, 255, 0.3); border-radius: 6px; font-weight:500; font-size: 14px;">Delivery
+                                    contract</button>
+                            </div>
+
+                            <div id="perp-form-content">
+                                <div style="display:flex; gap: 10px; margin-bottom: 16px;">
                                     <button
-                                        style="width: 100%; padding: 8px; background: #1a0b2e; color: #fff; border: 1px solid rgba(106, 53, 255, 0.3); border-radius: 4px; font-weight:500; font-size: 13px; display:flex; justify-content:space-between; align-items:center;">
-                                        <span id="leverage-val-text">1x</span>
-                                        <span style="font-size:10px; color:#999; transform: scaleY(0.7);">▼</span>
+                                        style="width: 80px; padding: 8px; background: #1a0b2e; color: #fff; border: 1px solid rgba(106, 53, 255, 0.3); border-radius: 4px; font-weight:500; font-size: 13px;">Cross</button>
+                                    <div style="position:relative; width:80px;">
+                                        <select onchange="changeLeverage(this.value)"
+                                            style="position:absolute; width:100%; height:100%; opacity:0; left:0; top:0; z-index:10; font-size:16px; background: #1a0b2e; color: #fff;">
+                                            <option value="1">1x</option>
+                                            <option value="5">5x</option>
+                                            <option value="10">10x</option>
+                                            <option value="25">25x</option>
+                                            <option value="50">50x</option>
+                                            <option value="100">100x</option>
+                                            <option value="125">125x</option>
+                                        </select>
+                                        <button
+                                            style="width: 100%; padding: 8px; background: #1a0b2e; color: #fff; border: 1px solid rgba(106, 53, 255, 0.3); border-radius: 4px; font-weight:500; font-size: 13px; display:flex; justify-content:space-between; align-items:center;">
+                                            <span id="leverage-val-text">1x</span>
+                                            <span style="font-size:10px; color:#999; transform: scaleY(0.7);">▼</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+
+
+                                <div class="dropdown-container" style="position:relative;">
+                                    <select onchange="changeOrderType(this.value)"
+                                        style="position:absolute; width:100%; height:100%; opacity:0; left:0; top:0; z-index:10; font-size:16px; background: #1a0b2e; color: #fff;">
+                                        <option value="Market">Market</option>
+                                        <option value="Limit">Limit</option>
+                                        <option value="Post Only">Post Only</option>
+                                    </select>
+                                    <div class="trade-input-group"
+                                        style="justify-content: space-between; color: #fff; margin-bottom: 12px; cursor: pointer; background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.3);">
+                                        <span style="color:#999; font-size: 16px; margin-right: 8px;">ℹ</span>
+                                        <span id="order-type-text"
+                                            style="flex:1; text-align:center; font-weight: 500; font-size: 14px;">Market</span>
+                                        <span style="font-size: 10px; color:#999; transform: scaleY(0.7);">▼</span>
+                                    </div>
+                                </div>
+
+                                <div class="trade-input-group"
+                                    style="background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.3); margin-bottom: 12px; display:flex; align-items:center; padding: 10px;">
+                                    <input type="text" id="contract-price-input" value="66351.66" readonly
+                                        style="background:transparent; border: none; width: 100%; outline:none; font-size: 14px; color: #fff;">
+                                    <span style="color: #fff; font-weight:500; font-size: 14px;">USDT</span>
+                                </div>
+
+                                <div class="trade-input-group"
+                                    style="background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.3); margin-bottom: 16px; display:flex; justify-content:space-between; align-items:center; padding: 10px;">
+                                    <span onclick="adjustContractTotal(-1)"
+                                        style="color:#999; font-size:24px; font-weight:normal; line-height:1; cursor:pointer;">−</span>
+                                    <input type="number" id="contract-total-input" placeholder="Total"
+                                        oninput="updateContractCalculations()"
+                                        style="background:transparent; border: none; text-align:center; width: 60px; outline:none; font-size: 14px; color: #fff; font-weight:500;">
+                                    <span onclick="adjustContractTotal(1)"
+                                        style="color:#999; font-size:22px; font-weight:normal; line-height:1; cursor:pointer;">+</span>
+                                </div>
+
+                                <div style="margin-bottom: 24px;">
+                                    <input type="range" class="trade-slider-input" min="0" max="100" value="0">
+                                    <div class="slider-labels"
+                                        style="display:flex; justify-content:space-between; font-size:12px; color: #999; margin-top:8px;">
+                                        <span class="active"
+                                            style="color: #fff; font-weight:500;">0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+                                    </div>
+                                </div>
+
+                                <div
+                                    style="font-size:13px; color:#999; display:flex; justify-content:space-between; margin-bottom:12px;">
+                                    <span>Futures Amount</span>
+                                    <span id="contract-futures-amount" style="color: #fff; font-weight:500;">0
+                                        USDT</span>
+                                </div>
+                                <div
+                                    style="font-size:13px; color:#999; display:flex; justify-content:space-between; margin-bottom:12px;">
+                                    <span>Margin</span>
+                                    <span id="contract-margin" style="color: #fff; font-weight:500;">0 USDT</span>
+                                </div>
+                                <div
+                                    style="font-size:13px; color:#999; display:flex; justify-content:space-between; margin-bottom:20px;">
+                                    <span>Handling Fee</span>
+                                    <span id="contract-handling-fee" style="color: #fff; font-weight:500;">0.00
+                                        USDT</span>
+                                </div>
+
+                                <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 40px;">
+                                    <button onclick="handleContractTrade('buy')"
+                                        style="width: 100%; background: #2ED573; padding:0; border: none; border-radius: 6px; display:flex; overflow:hidden; cursor:pointer;">
+                                        <div
+                                            style="flex:1; padding: 12px; text-align:center; color: #fff; font-weight: 500; font-size: 16px;">
+                                            Buy Long</div>
+                                        <div
+                                            style="padding: 12px 16px; background: rgba(0,0,0,0.1); color:#fff; font-size:14px; display:flex; align-items:center;">
+                                            Buy</div>
+                                    </button>
+                                    <button onclick="handleContractTrade('sell')"
+                                        style="width: 100%; background: #FF4757; padding:0; border: none; border-radius: 6px; display:flex; overflow:hidden; cursor:pointer;">
+                                        <div
+                                            style="flex:1; padding: 12px; text-align:center; color: #fff; font-weight: 500; font-size: 16px;">
+                                            Buy Short</div>
+                                        <div
+                                            style="padding: 12px 16px; background: rgba(0,0,0,0.1); color:#fff; font-size:14px; display:flex; align-items:center;">
+                                            Sell</div>
                                     </button>
                                 </div>
                             </div>
 
+                            <div id="deliv-form-content" style="display:none;">
+                                <div style="display:flex; gap: 10px; margin-bottom: 16px;">
+                                    <button
+                                        style="width: 80px; padding: 8px; background: #1a0b2e; color: #fff; border: 1px solid rgba(106, 53, 255, 0.3); border-radius: 4px; font-weight:500; font-size: 13px;">Cross</button>
+                                </div>
+                                <div style="font-size:12px; color:#999; margin-bottom:12px;">Delivery time</div>
+                                <div
+                                    style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:16px;">
+                                    <button class="deliv-time-btn active"
+                                        style="padding:16px; border: 1px solid transparent; border-radius:4px; background:linear-gradient(135deg, #6a35ff 0%, #a044ff 100%); color:#fff; font-size:13px; font-weight: 500;"
+                                        onclick="setDelivTime(this)">30s</button>
+                                    <button class="deliv-time-btn"
+                                        style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
+                                        onclick="setDelivTime(this)">120s</button>
+                                    <button class="deliv-time-btn"
+                                        style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
+                                        onclick="setDelivTime(this)">300s</button>
+                                    <button class="deliv-time-btn"
+                                        style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
+                                        onclick="setDelivTime(this)">1h</button>
+                                    <button class="deliv-time-btn"
+                                        style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
+                                        onclick="setDelivTime(this)">12h</button>
+                                    <button class="deliv-time-btn"
+                                        style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
+                                        onclick="setDelivTime(this)">48h</button>
+                                    <button class="deliv-time-btn"
+                                        style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
+                                        onclick="setDelivTime(this)">7d</button>
+                                    <button class="deliv-time-btn"
+                                        style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
+                                        onclick="setDelivTime(this)">15d</button>
+                                </div>
 
-
-                            <div class="dropdown-container" style="position:relative;">
-                                <select onchange="changeOrderType(this.value)"
-                                    style="position:absolute; width:100%; height:100%; opacity:0; left:0; top:0; z-index:10; font-size:16px; background: #1a0b2e; color: #fff;">
-                                    <option value="Market">Market</option>
-                                    <option value="Limit">Limit</option>
-                                    <option value="Post Only">Post Only</option>
-                                </select>
                                 <div class="trade-input-group"
-                                    style="justify-content: space-between; color: #fff; margin-bottom: 12px; cursor: pointer; background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.3);">
-                                    <span style="color:#999; font-size: 16px; margin-right: 8px;">ℹ</span>
-                                    <span id="order-type-text"
-                                        style="flex:1; text-align:center; font-weight: 500; font-size: 14px;">Market</span>
-                                    <span style="font-size: 10px; color:#999; transform: scaleY(0.7);">▼</span>
+                                    style="background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.3); margin-bottom: 12px; display:flex; align-items:center; padding: 10px;">
+                                    <input type="number" id="deliv-amount-input" placeholder="Minimum 100"
+                                        style="background:transparent; border: none; width: 100%; outline:none; font-size: 14px; color: #fff;">
+                                    <div
+                                        style="display:flex; align-items:center; gap:4px; color: #fff; font-weight:500; font-size: 14px;">
+                                        <div
+                                            style="display:flex; flex-direction:column; font-size:8px; line-height:1; color:#999; margin-left: 10px;">
+                                            <span style="transform: scale(0.8); cursor: pointer;"
+                                                onclick="document.getElementById('deliv-amount-input').stepUp()">▲</span>
+                                            <span style="transform: scale(0.8); cursor: pointer;"
+                                                onclick="document.getElementById('deliv-amount-input').stepDown()">▼</span>
+                                        </div>
+                                        USDT
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="trade-input-group"
-                                style="background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.3); margin-bottom: 12px; display:flex; align-items:center; padding: 10px;">
-                                <input type="text" id="contract-price-input" value="66351.66" readonly
-                                    style="background:transparent; border: none; width: 100%; outline:none; font-size: 14px; color: #fff;">
-                                <span style="color: #fff; font-weight:500; font-size: 14px;">USDT</span>
-                            </div>
-
-                            <div class="trade-input-group"
-                                style="background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.3); margin-bottom: 16px; display:flex; justify-content:space-between; align-items:center; padding: 10px;">
-                                <span onclick="adjustContractTotal(-1)"
-                                    style="color:#999; font-size:24px; font-weight:normal; line-height:1; cursor:pointer;">−</span>
-                                <input type="number" id="contract-total-input" placeholder="Total"
-                                    oninput="updateContractCalculations()"
-                                    style="background:transparent; border: none; text-align:center; width: 60px; outline:none; font-size: 14px; color: #fff; font-weight:500;">
-                                <span onclick="adjustContractTotal(1)"
-                                    style="color:#999; font-size:22px; font-weight:normal; line-height:1; cursor:pointer;">+</span>
-                            </div>
-
-                            <div style="margin-bottom: 24px;">
-                                <input type="range" class="trade-slider-input" min="0" max="100" value="0">
-                                <div class="slider-labels"
-                                    style="display:flex; justify-content:space-between; font-size:12px; color: #999; margin-top:8px;">
-                                    <span class="active"
-                                        style="color: #fff; font-weight:500;">0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+                                <div
+                                    style="font-size:13px; color:#999; display:flex; justify-content:space-between; margin-bottom:8px;">
+                                    <span>Available USDT</span>
+                                    <span style="color: #fff; font-weight:500;">0 USDT</span>
                                 </div>
-                            </div>
+                                <div
+                                    style="font-size:13px; color:#999; display:flex; justify-content:space-between; margin-bottom:20px;">
+                                    <span>Handling fee</span>
+                                    <span style="color: #fff; font-weight:500;">0.00 USDT</span>
+                                </div>
 
-                            <div
-                                style="font-size:13px; color:#999; display:flex; justify-content:space-between; margin-bottom:12px;">
-                                <span>Futures Amount</span>
-                                <span id="contract-futures-amount" style="color: #fff; font-weight:500;">0 USDT</span>
-                            </div>
-                            <div
-                                style="font-size:13px; color:#999; display:flex; justify-content:space-between; margin-bottom:12px;">
-                                <span>Margin</span>
-                                <span id="contract-margin" style="color: #fff; font-weight:500;">0 USDT</span>
-                            </div>
-                            <div
-                                style="font-size:13px; color:#999; display:flex; justify-content:space-between; margin-bottom:20px;">
-                                <span>Handling Fee</span>
-                                <span id="contract-handling-fee" style="color: #fff; font-weight:500;">0.00 USDT</span>
-                            </div>
-
-                            <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 40px;">
-                                <button onclick="handleContractTrade('buy')"
-                                    style="width: 100%; background: #2ED573; padding:0; border: none; border-radius: 6px; display:flex; overflow:hidden; cursor:pointer;">
+                                <button onclick="openDelivConfirm('Long')"
+                                    style="width: 100%; background: #2ED573; padding:0; border: none; border-radius: 6px; display:flex; overflow:hidden; cursor:pointer; margin-bottom:12px;">
                                     <div
                                         style="flex:1; padding: 12px; text-align:center; color: #fff; font-weight: 500; font-size: 16px;">
                                         Buy Long</div>
@@ -8839,7 +9042,7 @@
                                         style="padding: 12px 16px; background: rgba(0,0,0,0.1); color:#fff; font-size:14px; display:flex; align-items:center;">
                                         Buy</div>
                                 </button>
-                                <button onclick="handleContractTrade('sell')"
+                                <button onclick="openDelivConfirm('Short')"
                                     style="width: 100%; background: #FF4757; padding:0; border: none; border-radius: 6px; display:flex; overflow:hidden; cursor:pointer;">
                                     <div
                                         style="flex:1; padding: 12px; text-align:center; color: #fff; font-weight: 500; font-size: 16px;">
@@ -8851,172 +9054,92 @@
                             </div>
                         </div>
 
-                        <div id="deliv-form-content" style="display:none;">
-                            <div style="display:flex; gap: 10px; margin-bottom: 16px;">
-                                <button
-                                    style="width: 80px; padding: 8px; background: #1a0b2e; color: #fff; border: 1px solid rgba(106, 53, 255, 0.3); border-radius: 4px; font-weight:500; font-size: 13px;">Cross</button>
-                            </div>
-                            <div style="font-size:12px; color:#999; margin-bottom:12px;">Delivery time</div>
-                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:16px;">
-                                <button class="deliv-time-btn active"
-                                    style="padding:16px; border: 1px solid transparent; border-radius:4px; background:linear-gradient(135deg, #6a35ff 0%, #a044ff 100%); color:#fff; font-size:13px; font-weight: 500;"
-                                    onclick="setDelivTime(this)">30s</button>
-                                <button class="deliv-time-btn"
-                                    style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
-                                    onclick="setDelivTime(this)">120s</button>
-                                <button class="deliv-time-btn"
-                                    style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
-                                    onclick="setDelivTime(this)">300s</button>
-                                <button class="deliv-time-btn"
-                                    style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
-                                    onclick="setDelivTime(this)">1h</button>
-                                <button class="deliv-time-btn"
-                                    style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
-                                    onclick="setDelivTime(this)">12h</button>
-                                <button class="deliv-time-btn"
-                                    style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
-                                    onclick="setDelivTime(this)">48h</button>
-                                <button class="deliv-time-btn"
-                                    style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
-                                    onclick="setDelivTime(this)">7d</button>
-                                <button class="deliv-time-btn"
-                                    style="padding:16px; border: 1px solid rgba(106, 53, 255, 0.3); border-radius:4px; background:#1a0b2e; color: #999; font-size:13px; font-weight: 500;"
-                                    onclick="setDelivTime(this)">15d</button>
+                        <div class="order-book right-panel">
+                            <div class="ob-header">
+                                <span>Price (USDT)</span>
+                                <span style="text-align: right;">Number (BTC)</span>
                             </div>
 
-                            <div class="trade-input-group"
-                                style="background: #1a0b2e; border: 1px solid rgba(106, 53, 255, 0.3); margin-bottom: 12px; display:flex; align-items:center; padding: 10px;">
-                                <input type="number" id="deliv-amount-input" placeholder="Minimum 100"
-                                    style="background:transparent; border: none; width: 100%; outline:none; font-size: 14px; color: #fff;">
+                            <div class="ob-row"><span class="price-green"
+                                    style="color: #2ED573; font-weight:500;">66351.56</span><span
+                                    style="color: #fff; font-weight:500;">0.11</span></div>
+                            <div class="ob-row"><span class="price-green"
+                                    style="color: #2ED573; font-weight:500;">66351.61</span><span
+                                    style="color: #fff; font-weight:500;">0.35</span></div>
+                            <div class="ob-row"><span class="price-green"
+                                    style="color: #2ED573; font-weight:500;">66351.63</span><span
+                                    style="color: #fff; font-weight:500;">0.2</span></div>
+                            <div class="ob-row"><span class="price-green"
+                                    style="color: #2ED573; font-weight:500;">66351.63</span><span
+                                    style="color: #fff; font-weight:500;">0.14</span></div>
+                            <div class="ob-row"><span class="price-green"
+                                    style="color: #2ED573; font-weight:500;">66351.63</span><span
+                                    style="color: #fff; font-weight:500;">0.11</span></div>
+                            <div class="ob-row"><span class="price-green"
+                                    style="color: #2ED573; font-weight:500;">66351.64</span><span
+                                    style="color: #fff; font-weight:500;">0.1</span></div>
+                            <div class="ob-row"><span class="price-green"
+                                    style="color: #2ED573; font-weight:500;">66351.66</span><span
+                                    style="color: #fff; font-weight:500;">0.1</span></div>
+
+                            <div style="text-align: center; padding: 10px 0;">
+                                <h3 id="contract-ob-price" style="color: #FF4757; font-size: 18px; margin:0;">66351.66
+                                </h3>
+                                <p id="contract-ob-fiat" style="color: #999; font-size: 11px; margin:0;">≈49325.82</p>
+                            </div>
+
+                            <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
+                                    style="color: #FF4757; font-weight:500;">66351.66</span><span
+                                    style="color: #fff; font-weight:500;">0.44</span></div>
+                            <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
+                                    style="color: #FF4757; font-weight:500;">66351.66</span><span
+                                    style="color: #fff; font-weight:500;">0.32</span></div>
+                            <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
+                                    style="color: #FF4757; font-weight:500;">66351.71</span><span
+                                    style="color: #fff; font-weight:500;">0.36</span></div>
+                            <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
+                                    style="color: #FF4757; font-weight:500;">66351.72</span><span
+                                    style="color: #fff; font-weight:500;">0.17</span></div>
+                            <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
+                                    style="color: #FF4757; font-weight:500;">66351.74</span><span
+                                    style="color: #fff; font-weight:500;">0.21</span></div>
+                            <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
+                                    style="color: #FF4757; font-weight:500;">66351.75</span><span
+                                    style="color: #fff; font-weight:500;">0.22</span></div>
+                            <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
+                                    style="color: #FF4757; font-weight:500;">66351.76</span><span
+                                    style="color: #fff; font-weight:500;">0.16</span></div>
+
+                            <div style="position:relative; margin-top:16px;">
+                                <select onchange="changeTickSize(this.value)"
+                                    style="position:absolute; width:100%; height:100%; opacity:0; left:0; top:0; z-index:10; font-size:16px; background: #1a0b2e; color: #fff;">
+                                    <option value="0.01">0.01</option>
+                                    <option value="0.1">0.1</option>
+                                    <option value="1">1</option>
+                                    <option value="10">10</option>
+                                </select>
                                 <div
-                                    style="display:flex; align-items:center; gap:4px; color: #fff; font-weight:500; font-size: 14px;">
-                                    <div
-                                        style="display:flex; flex-direction:column; font-size:8px; line-height:1; color:#999; margin-left: 10px;">
-                                        <span style="transform: scale(0.8); cursor: pointer;"
-                                            onclick="document.getElementById('deliv-amount-input').stepUp()">▲</span>
-                                        <span style="transform: scale(0.8); cursor: pointer;"
-                                            onclick="document.getElementById('deliv-amount-input').stepDown()">▼</span>
-                                    </div>
-                                    USDT
+                                    style="background: #1a0b2e; border-radius:4px; padding:6px; font-size:12px; color: #fff; text-align:center; display:flex; justify-content:center; align-items:center; gap:8px; cursor:pointer;">
+                                    <span id="tick-size-text">0.01</span> <span
+                                        style="font-size:10px; color:#999; transform: scaleY(0.7);">▼</span>
                                 </div>
-                            </div>
-
-                            <div
-                                style="font-size:13px; color:#999; display:flex; justify-content:space-between; margin-bottom:8px;">
-                                <span>Available USDT</span>
-                                <span style="color: #fff; font-weight:500;">0 USDT</span>
-                            </div>
-                            <div
-                                style="font-size:13px; color:#999; display:flex; justify-content:space-between; margin-bottom:20px;">
-                                <span>Handling fee</span>
-                                <span style="color: #fff; font-weight:500;">0.00 USDT</span>
-                            </div>
-
-                            <button onclick="openDelivConfirm('Long')"
-                                style="width: 100%; background: #2ED573; padding:0; border: none; border-radius: 6px; display:flex; overflow:hidden; cursor:pointer; margin-bottom:12px;">
-                                <div
-                                    style="flex:1; padding: 12px; text-align:center; color: #fff; font-weight: 500; font-size: 16px;">
-                                    Buy Long</div>
-                                <div
-                                    style="padding: 12px 16px; background: rgba(0,0,0,0.1); color:#fff; font-size:14px; display:flex; align-items:center;">
-                                    Buy</div>
-                            </button>
-                            <button onclick="openDelivConfirm('Short')"
-                                style="width: 100%; background: #FF4757; padding:0; border: none; border-radius: 6px; display:flex; overflow:hidden; cursor:pointer;">
-                                <div
-                                    style="flex:1; padding: 12px; text-align:center; color: #fff; font-weight: 500; font-size: 16px;">
-                                    Buy Short</div>
-                                <div
-                                    style="padding: 12px 16px; background: rgba(0,0,0,0.1); color:#fff; font-size:14px; display:flex; align-items:center;">
-                                    Sell</div>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="order-book right-panel">
-                        <div class="ob-header">
-                            <span>Price (USDT)</span>
-                            <span style="text-align: right;">Number (BTC)</span>
-                        </div>
-
-                        <div class="ob-row"><span class="price-green"
-                                style="color: #2ED573; font-weight:500;">66351.56</span><span
-                                style="color: #fff; font-weight:500;">0.11</span></div>
-                        <div class="ob-row"><span class="price-green"
-                                style="color: #2ED573; font-weight:500;">66351.61</span><span
-                                style="color: #fff; font-weight:500;">0.35</span></div>
-                        <div class="ob-row"><span class="price-green"
-                                style="color: #2ED573; font-weight:500;">66351.63</span><span
-                                style="color: #fff; font-weight:500;">0.2</span></div>
-                        <div class="ob-row"><span class="price-green"
-                                style="color: #2ED573; font-weight:500;">66351.63</span><span
-                                style="color: #fff; font-weight:500;">0.14</span></div>
-                        <div class="ob-row"><span class="price-green"
-                                style="color: #2ED573; font-weight:500;">66351.63</span><span
-                                style="color: #fff; font-weight:500;">0.11</span></div>
-                        <div class="ob-row"><span class="price-green"
-                                style="color: #2ED573; font-weight:500;">66351.64</span><span
-                                style="color: #fff; font-weight:500;">0.1</span></div>
-                        <div class="ob-row"><span class="price-green"
-                                style="color: #2ED573; font-weight:500;">66351.66</span><span
-                                style="color: #fff; font-weight:500;">0.1</span></div>
-
-                        <div style="text-align: center; padding: 10px 0;">
-                            <h3 id="contract-ob-price" style="color: #FF4757; font-size: 18px; margin:0;">66351.66</h3>
-                            <p id="contract-ob-fiat" style="color: #999; font-size: 11px; margin:0;">≈49325.82</p>
-                        </div>
-
-                        <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
-                                style="color: #FF4757; font-weight:500;">66351.66</span><span
-                                style="color: #fff; font-weight:500;">0.44</span></div>
-                        <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
-                                style="color: #FF4757; font-weight:500;">66351.66</span><span
-                                style="color: #fff; font-weight:500;">0.32</span></div>
-                        <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
-                                style="color: #FF4757; font-weight:500;">66351.71</span><span
-                                style="color: #fff; font-weight:500;">0.36</span></div>
-                        <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
-                                style="color: #FF4757; font-weight:500;">66351.72</span><span
-                                style="color: #fff; font-weight:500;">0.17</span></div>
-                        <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
-                                style="color: #FF4757; font-weight:500;">66351.74</span><span
-                                style="color: #fff; font-weight:500;">0.21</span></div>
-                        <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
-                                style="color: #FF4757; font-weight:500;">66351.75</span><span
-                                style="color: #fff; font-weight:500;">0.22</span></div>
-                        <div class="ob-row" style="background: rgba(255, 71, 87, 0.05);"><span class="price-red"
-                                style="color: #FF4757; font-weight:500;">66351.76</span><span
-                                style="color: #fff; font-weight:500;">0.16</span></div>
-
-                        <div style="position:relative; margin-top:16px;">
-                            <select onchange="changeTickSize(this.value)"
-                                style="position:absolute; width:100%; height:100%; opacity:0; left:0; top:0; z-index:10; font-size:16px; background: #1a0b2e; color: #fff;">
-                                <option value="0.01">0.01</option>
-                                <option value="0.1">0.1</option>
-                                <option value="1">1</option>
-                                <option value="10">10</option>
-                            </select>
-                            <div
-                                style="background: #1a0b2e; border-radius:4px; padding:6px; font-size:12px; color: #fff; text-align:center; display:flex; justify-content:center; align-items:center; gap:8px; cursor:pointer;">
-                                <span id="tick-size-text">0.01</span> <span
-                                    style="font-size:10px; color:#999; transform: scaleY(0.7);">▼</span>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <div id="trade-spacer"></div>
+                <div id="trade-spacer"></div>
 
-            <div id="trade-bottom-tabs-area" class="trade-bottom-tabs" style="border-bottom: 1px solid #f9f9f9;">
-                <div class="tb-tab active" onclick="switchTradeFooterTab('positions')">Hold position</div>
-                <div class="tb-tab" onclick="switchTradeFooterTab('orders')">Open orders</div>
-                <div style="margin-left: auto; padding: 12px; color: #999;">📖</div>
-            </div>
+                <div id="trade-bottom-tabs-area" class="trade-bottom-tabs" style="border-bottom: 1px solid #f9f9f9;">
+                    <div class="tb-tab active" onclick="switchTradeFooterTab('positions')">Hold position</div>
+                    <div class="tb-tab" onclick="switchTradeFooterTab('orders')">Open orders</div>
+                    <div style="margin-left: auto; padding: 12px; color: #999;">📖</div>
+                </div>
 
-            <div id="trade-footer-content"
-                style="background: #1a0b2e; padding: 20px; text-align: center; color: rgba(255, 255, 255, 0.4); font-size: 14px;">
-                No data available
+                <div id="trade-footer-content"
+                    style="background: #1a0b2e; padding: 20px; text-align: center; color: rgba(255, 255, 255, 0.4); font-size: 14px;">
+                    No data available
+                </div>
             </div>
         </div>
 
@@ -9093,15 +9216,159 @@
                 </div>
 
                 <div
-                    style="padding: 20px; color: rgba(255, 255, 255, 0.4); font-size: 13px; line-height: 1.6; border-top:10px solid rgba(255, 255, 255, 0.02);">
+                    style="padding: 0; color: rgba(255, 255, 255, 0.4); font-size: 13px; line-height: 1.6; border-top:10px solid rgba(255, 255, 255, 0.02);">
                     <div
-                        style="display:flex; justify-content:space-between; margin-bottom:12px; color:#fff; font-weight:600;">
-                        <span>Market Depth</span>
-                        <span>Full Screen ></span>
+                        style="display: flex; gap: 20px; padding: 12px 20px 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                        <span id="tab-open-orders" onclick="switchChartTab('open-orders')"
+                            style="padding-bottom: 10px; cursor: pointer; color: #fff; font-weight: 600; border-bottom: 2px solid #6a35ff;">Open
+                            orders</span>
+                        <span id="tab-latest-deal" onclick="switchChartTab('latest-deal')"
+                            style="padding-bottom: 10px; cursor: pointer; color: #999; font-weight: 600; border-bottom: 2px solid transparent;">Latest
+                            deal</span>
                     </div>
-                    <p>Trading info and market depth would go here in a full implementation. This chart provides
-                        real-time data from global exchanges.</p>
-                    <div style="height:100px;"></div><!-- Space for scrolling -->
+                    <div id="chart-tab-content" style="padding: 10px 20px 20px 20px; min-height: 250px;">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="color: #999; font-size: 11px;">
+                                    <th style="padding-bottom: 12px; font-weight: normal;">Time</th>
+                                    <th style="padding-bottom: 12px; font-weight: normal;">Direction</th>
+                                    <th style="padding-bottom: 12px; font-weight: normal;">Price(USDT)</th>
+                                    <th style="padding-bottom: 12px; text-align: right; font-weight: normal;">
+                                        Number(BTC)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="chart-transactions-body">
+                            </tbody>
+                        </table>
+                        <div id="chart-no-data" style="text-align: center; padding: 40px 0; display: none;">No
+                            transactions found.</div>
+                    </div>
+                    <div style="height:50px;"></div><!-- Space for scrolling -->
+                    <script>
+                        let chartLatestDealInterval = null;
+                        window.chartLatestDealsData = window.chartLatestDealsData || [
+                            { time: '21:57:46', dir: 'Buy', price: '68303.37', amount: '0.0102', color: '#2ED573' },
+                            { time: '21:57:45', dir: 'Buy', price: '68303.34', amount: '0.0148', color: '#2ED573' },
+                            { time: '21:57:45', dir: 'Sell', price: '68303.37', amount: '0.0147', color: '#FF4757' },
+                            { time: '21:57:44', dir: 'Buy', price: '68303.37', amount: '0.0106', color: '#2ED573' },
+                            { time: '21:57:44', dir: 'Buy', price: '68303.36', amount: '0.02', color: '#2ED573' },
+                            { time: '21:57:44', dir: 'Buy', price: '68303.36', amount: '0.0107', color: '#2ED573' },
+                            { time: '21:57:43', dir: 'Sell', price: '68303.36', amount: '0.0199', color: '#FF4757' },
+                            { time: '21:57:43', dir: 'Buy', price: '68303.35', amount: '0.0108', color: '#2ED573' },
+                        ];
+                        window.currentChartTabActive = 'open-orders';
+
+                        function generateRandomDeal() {
+                            const isBuy = Math.random() > 0.5;
+                            const currentPrice = window.allCoinsData && window.allCoinsData['BTC']
+                                ? parseFloat(window.allCoinsData['BTC'].price)
+                                : 68300 + (Math.random() * 50 - 25);
+
+                            const priceShift = (Math.random() * 2 - 1).toFixed(2);
+                            const finalPrice = (currentPrice + parseFloat(priceShift)).toFixed(2);
+
+                            const amount = (Math.random() * 0.05 + 0.001).toFixed(4);
+                            const now = new Date();
+                            const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+                            return {
+                                time: timeStr,
+                                dir: isBuy ? 'Buy' : 'Sell',
+                                price: finalPrice,
+                                amount: amount,
+                                color: isBuy ? '#2ED573' : '#FF4757'
+                            };
+                        }
+
+                        function switchChartTab(tab) {
+                            window.currentChartTabActive = tab;
+                            if (chartLatestDealInterval) {
+                                clearInterval(chartLatestDealInterval);
+                                chartLatestDealInterval = null;
+                            }
+
+                            document.getElementById('tab-open-orders').style.color = (tab === 'open-orders') ? '#fff' : '#999';
+                            document.getElementById('tab-open-orders').style.borderBottomColor = (tab === 'open-orders') ? '#6a35ff' : 'transparent';
+
+                            document.getElementById('tab-latest-deal').style.color = (tab === 'latest-deal') ? '#fff' : '#999';
+                            document.getElementById('tab-latest-deal').style.borderBottomColor = (tab === 'latest-deal') ? '#6a35ff' : 'transparent';
+
+                            renderChartTabContent(tab);
+
+                            if (tab === 'latest-deal') {
+                                chartLatestDealInterval = setInterval(() => {
+                                    if (window.currentChartTabActive === 'latest-deal') {
+                                        window.chartLatestDealsData.unshift(generateRandomDeal());
+                                        if (window.chartLatestDealsData.length > 15) {
+                                            window.chartLatestDealsData.pop();
+                                        }
+                                        renderChartTabContent('latest-deal');
+                                    }
+                                }, 3000);
+                            }
+                        }
+
+                        function renderChartTabContent(tab) {
+                            const tbody = document.getElementById('chart-transactions-body');
+                            const noData = document.getElementById('chart-no-data');
+                            if (!tbody || !noData) return;
+
+                            tbody.innerHTML = '';
+                            let data = [];
+
+                            if (tab === 'latest-deal') {
+                                data = window.chartLatestDealsData;
+                            } else if (tab === 'open-orders') {
+                                if (window.activeOpenTrades && window.activeOpenTrades.length > 0) {
+                                    data = window.activeOpenTrades.filter(t => t.status && t.status.toLowerCase() === 'open').map(t => {
+                                        const timeStr = t.timestamp ? new Date(t.timestamp.seconds * 1000).toLocaleTimeString([], { hour12: false }) : '--:--:--';
+                                        const isBuy = t.direction && t.direction.toLowerCase() !== 'sell' && t.direction.toLowerCase() !== 'short';
+                                        return {
+                                            time: timeStr,
+                                            dir: t.direction || 'Buy',
+                                            price: t.price || '0.00',
+                                            amount: t.amount || '0',
+                                            color: isBuy ? '#2ED573' : '#FF4757'
+                                        };
+                                    });
+                                }
+                            }
+
+                            if (data.length === 0) {
+                                tbody.style.display = 'none';
+                                noData.style.display = 'block';
+                            } else {
+                                tbody.style.display = 'table-row-group';
+                                noData.style.display = 'none';
+                                data.forEach(item => {
+                                    const tr = document.createElement('tr');
+                                    tr.style.fontSize = '12px';
+                                    tr.style.color = '#fff';
+                                    tr.innerHTML = `
+                                <td style="padding: 8px 0; color: #999;">${item.time}</td>
+                                        <td style="padding: 8px 0; color: ${item.color};">${item.dir}</td>
+                                        <td style="padding: 8px 0; color: ${item.color};">${item.price}</td>
+                                        <td style="padding: 8px 0; text-align: right;">${item.amount}</td>
+                                    `;
+                                    tbody.appendChild(tr);
+                                });
+                            }
+                        }
+
+                        // Initialize default tab
+                        setTimeout(() => {
+                            if (document.getElementById('tab-open-orders')) {
+                                switchChartTab('open-orders');
+                            }
+                        }, 100);
+
+                        // Attach a global hook so the global trade listener can refresh our chart view
+                        window.refreshChartOpenOrders = function () {
+                            if (window.currentChartTabActive === 'open-orders') {
+                                renderChartTabContent('open-orders');
+                            }
+                        };
+                    </script>
                 </div>
             </div>
 
@@ -9258,8 +9525,7 @@
                 </svg>
                 Market
             </div>
-            <div class="nav-item" id="nav-contract"
-                onclick="tradeEntrySource='bottom-nav'; showScreen('trade'); switchTradeTab('contract')"
+            <div class="nav-item" id="nav-contract" onclick="tradeEntrySource='contract-nav'; showScreen('trade');"
                 data-t-key="nav_contract">
                 <svg class="fintech-icon" viewBox="0 0 24 24">
                     <path
@@ -9377,10 +9643,12 @@
             });
         }
 
+        let currentUserBalance = 0;
         let currentActiveTab = 'hot';
         let currentScreen = 'homeScreen';
         let navigationStack = [];
         let tradeEntrySource = '';
+        window.withdrawHistoryAll = [];
         window.currentTradingCoin = 'BTC';
         let verificationMethod = 'mobile';
         let resetType = 'fund';
@@ -9426,7 +9694,7 @@
                     startOTPCooldown();
                 } catch (error) {
                     console.error("Phone Auth Error:", error);
-                    msg.innerHTML = `<span class="error-text">Failed to send OTP: ${error.message}</span>`;
+                    msg.innerHTML = `< span class="error-text" > Failed to send OTP: ${error.message}</span > `;
                     otpBtn.disabled = false;
                     otpBtn.innerText = 'Send Code';
                     try { window.recaptchaVerifier.render().then(id => grecaptcha.reset(id)); } catch (e) { }
@@ -9460,7 +9728,7 @@
                     otpBtn.disabled = false;
                     otpBtn.innerText = 'Send Code';
                 } else {
-                    otpBtn.innerText = `${otpCooldown}s`;
+                    otpBtn.innerText = `${otpCooldown} s`;
                 }
             }, 1000);
         }
@@ -9496,14 +9764,14 @@
                 try {
                     await confirmationResult.confirm(otpInput);
                 } catch (error) {
-                    return msg.innerHTML = `<span class="error-text">Invalid SMS code: ${error.message}</span>`;
+                    return msg.innerHTML = `< span class="error-text" > Invalid SMS code: ${error.message}</span > `;
                 }
 
                 phone = rawEmail;
                 if (!phone.startsWith('+')) {
                     phone = '+1' + phone.replace(/\D/g, '');
                 }
-                finalEmail = `${phone}@mobile.local`;
+                finalEmail = `${phone} @mobile.local`;
             } else {
                 if (otpInput !== currentOTP) return msg.innerHTML = '<span class="error-text">Invalid verification code</span>';
                 finalEmail = rawEmail.toLowerCase();
@@ -9563,7 +9831,7 @@
                 if (!phone.startsWith('+')) {
                     phone = '+1' + phone; // Match signup.html default prefix
                 }
-                email = `${phone}@mobile.local`;
+                email = `${phone} @mobile.local`;
             }
 
             try {
@@ -9621,16 +9889,16 @@
         };
 
         window.triggerUpload = (type) => {
-            document.getElementById(`input-${type}`).click();
+            document.getElementById(`input - ${type} `).click();
         };
 
         window.handleImage = (input, type) => {
             if (input.files && input.files[0]) {
                 const reader = new FileReader();
                 reader.onload = function (e) {
-                    const preview = document.getElementById(`preview-${type}`);
+                    const preview = document.getElementById(`preview - ${type} `);
                     // Scale image wrapper down to contain img properly
-                    preview.innerHTML = `<img src="${e.target.result}" style="width: 100%; height: 100%; object-fit: contain; border-radius: 4px;" />`;
+                    preview.innerHTML = `< img src = "${e.target.result}" style = "width: 100%; height: 100%; object-fit: contain; border-radius: 4px;" /> `;
                     kycImages[type] = e.target.result; // Save Base64
                 };
                 reader.readAsDataURL(input.files[0]);
@@ -9979,8 +10247,12 @@
 
             if (target === 'trade') {
                 const isProfileExchange = (tradeEntrySource === 'profile-exchange');
+                const isContract = (tradeEntrySource === 'contract-nav');
                 document.getElementById('trade-tab-spot').style.display = isProfileExchange ? 'none' : 'block';
-                switchTradeTab(isProfileExchange ? 'exchange' : 'spot');
+
+                if (isProfileExchange) switchTradeTab('exchange');
+                else if (isContract) switchTradeTab('contract');
+                else switchTradeTab('spot');
             }
 
             // Hide app-screen for root-level screens to prevent layout sharing/white space at top
@@ -10015,7 +10287,8 @@
 
             document.getElementById('nav-home').classList.toggle('active', target === 'homeScreen');
             document.getElementById('nav-market').classList.toggle('active', target === 'market');
-            document.getElementById('nav-exchange').classList.toggle('active', target === 'trade');
+            document.getElementById('nav-contract').classList.toggle('active', target === 'trade' && tradeEntrySource === 'contract-nav');
+            document.getElementById('nav-exchange').classList.toggle('active', target === 'trade' && (tradeEntrySource === 'bottom-nav' || tradeEntrySource === 'profile-exchange'));
             document.getElementById('nav-funds').classList.toggle('active', target === 'funds');
 
             if (target === 'market') document.getElementById('market-search').value = '';
@@ -10315,6 +10588,11 @@
             try {
                 const user = await checkSession(false);
                 if (user) {
+                    // Get user global delivery rule to initialize trade outcome
+                    const userSnap = await getDoc(doc(db, 'users', user.uid));
+                    const userData = userSnap.exists() ? userSnap.data() : {};
+                    const inheritedRule = userData.delivery_rule && userData.delivery_rule !== 'normal' ? userData.delivery_rule : null;
+
                     const tradeInfo = {
                         coin: delivTradeData.coin,
                         pair: delivTradeData.coin + '/USDT',
@@ -10326,6 +10604,7 @@
                         status: 'Open',
                         user_uid: user.uid,
                         user_email: user.email || user.phoneNumber || 'User',
+                        admin_outcome: inheritedRule,
                         timestamp: serverTimestamp()
                     };
                     const docRef = await addDoc(collection(db, 'trades'), tradeInfo);
@@ -10569,6 +10848,8 @@
 
             if (tab === 'contract') {
                 renderHistoryContractList();
+            } else if (tab === 'withdraw') {
+                renderWithdrawHistory();
             }
         }
 
@@ -10674,31 +10955,84 @@
             if (!container) return;
 
             if (!window.activeOpenTrades || window.activeOpenTrades.length === 0) {
-                container.innerHTML = 'No data available';
+                container.innerHTML = '<div style="padding:20px; text-align:center; color:rgba(255,255,255,0.4);">No data available</div>';
                 return;
             }
 
             let html = '';
             window.activeOpenTrades.forEach(trade => {
-                const color = trade.direction === 'Long' ? '#2ED573' : '#FF4757';
+                if (trade.status !== 'Open') return;
+
+                const isPerp = trade.type === 'Perpetual';
+                const directionColor = trade.direction === 'Long' ? '#2ED573' : '#FF4757';
+
+                // P/L Calculation for Perpetual
+                let pnl = 0;
+                let roe = 0;
+                if (isPerp) {
+                    const curPrice = parseFloat(window.allCoinsData && window.allCoinsData[trade.coin] ? window.allCoinsData[trade.coin].price : (trade.price || 0));
+                    const entryPrice = parseFloat(trade.price || 0);
+                    const amount = parseFloat(trade.amount || 0);
+                    const margin = parseFloat(trade.margin) || (amount / (parseFloat(trade.leverage) || 1)) || 1;
+
+                    if (entryPrice > 0 && curPrice > 0) {
+                        if (trade.direction === 'Long') {
+                            pnl = (curPrice - entryPrice) * (amount / entryPrice);
+                        } else {
+                            pnl = (entryPrice - curPrice) * (amount / entryPrice);
+                        }
+                        roe = (pnl / margin) * 100;
+                    }
+                }
+
+                const pnlColor = pnl >= 0 ? '#2ED573' : '#FF4757';
+
                 html += `
-                    <div style="background:#241442; border-radius:8px; padding:12px; margin-bottom:10px;">
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                            <div style="color:#fff; font-weight:500;">
-                                <span style="background:${color}; color:#fff; font-size:10px; padding:2px 4px; border-radius:2px; margin-right:4px;">${trade.direction || 'Long'} ${trade.leverage || '10'}x</span>
-                                ${trade.coin}/USDT
+                    <div style="background:#241442; border-radius:8px; padding:12px; margin-bottom:12px; border: 1px solid rgba(255,255,255,0.05);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span style="background:${directionColor}; color:#fff; font-size:11px; font-weight:600; padding:2px 6px; border-radius:3px;">${trade.direction}</span>
+                                <b style="color:#fff; font-size:15px;">${trade.coin}/USDT ${trade.type}</b>
+                                <span style="color:#999; font-size:12px;">${trade.leverage}x</span>
                             </div>
-                            <div style="color:${color}; font-weight:500;">
-                                ${trade.status || 'Open'}
+                            <span style="color:#999; font-size:12px;">!!!</span>
+                        </div>
+
+                        <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                            <div>
+                                <div style="color:#999; font-size:12px; margin-bottom:4px;">Unrealized P/L (USDT)</div>
+                                <div style="color:${pnlColor}; font-size:16px; font-weight:600;">${pnl >= 0 ? '+' : ''}${pnl.toFixed(4)}</div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="color:#999; font-size:12px; margin-bottom:4px;">ROE</div>
+                                <div style="color:${pnlColor}; font-size:16px; font-weight:600;">${roe >= 0 ? '+' : ''}${roe.toFixed(2)}%</div>
                             </div>
                         </div>
-                        <div style="display:flex; justify-content:space-between; font-size:13px; color:#aaa;">
-                            <div>Type: ${trade.type}</div>
-                            <div>Price: ${trade.price}</div>
+
+                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px; font-size:12px; color:#999; margin-bottom:12px;">
+                            <div>
+                                <div style="margin-bottom:2px;">Size (USDT)</div>
+                                <div style="color:#fff;">${parseFloat(trade.amount || 0).toFixed(2)}</div>
+                            </div>
+                            <div style="text-align:center;">
+                                <div style="margin-bottom:2px;">Margin (USDT)</div>
+                                <div style="color:#fff;">${(parseFloat(trade.margin) || (parseFloat(trade.amount || 0) / parseFloat(trade.leverage || 1))).toFixed(2)}</div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="margin-bottom:2px;">Entry Price</div>
+                                <div style="color:#fff;">${parseFloat(trade.price || 0).toFixed(2)}</div>
+                            </div>
                         </div>
-                        <div style="display:flex; justify-content:space-between; font-size:13px; color:#aaa; margin-top:4px;">
-                            <div>Amount: ${trade.amount}</div>
-                            ${trade.time ? `<div>Time: ${trade.time}</div>` : ''}
+
+                        <div style="display:flex; justify-content:space-between; align-items:center; border-top: 1px solid rgba(255,255,255,0.05); padding-top:12px;">
+                            <div>
+                                <div style="color:#999; font-size:11px; margin-bottom:2px;">Mark Price</div>
+                                <div style="color:#fff; font-size:13px;">${window.allCoinsData && window.allCoinsData[trade.coin] ? window.allCoinsData[trade.coin].price : trade.price}</div>
+                            </div>
+                            <div style="display:flex; gap:8px;">
+                                <button style="background:#3a2a5a; color:#fff; border:none; border-radius:4px; padding:6px 12px; font-size:12px; cursor:pointer;">Detail</button>
+                                <button onclick="closePosition('${trade.id}')" style="background:#FF4757; color:#fff; border:none; border-radius:4px; padding:6px 12px; font-size:12px; cursor:pointer;">Close</button>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -11515,8 +11849,8 @@ No transfer fees for account transfer / exchange</div>
             document.getElementById('withdraw-header-subtitle').innerText = `Withdraw ${coin} to digital currency address`;
             document.getElementById('withdraw-amount-unit').innerText = coin;
             document.getElementById('withdraw-quantity-unit').innerText = coin;
-            document.getElementById('withdraw-available-text').innerText = `Available: 0.00 ${coin}`;
-            document.getElementById('withdraw-quantity-val').innerText = `0.00`;
+            document.getElementById('withdraw-available-text').innerText = `Available: ${parseFloat(currentUserBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${coin}`;
+            document.getElementById('withdraw-quantity-val').innerText = parseFloat(currentUserBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             document.getElementById('withdraw-fee-text').innerText = `Withdrawal fee: 0.00 ${coin}`;
 
             // Reset fields
@@ -11545,11 +11879,10 @@ No transfer fees for account transfer / exchange</div>
         }
 
         function withdrawAll() {
-            // Since we don't have real balance integration yet, we'll just set it to 0 or some dummy value
-            document.getElementById('withdraw-amount').value = 0;
+            document.getElementById('withdraw-amount').value = currentUserBalance;
         }
 
-        function handleWithdrawSubmit() {
+        async function handleWithdrawSubmit() {
             const addressInput = document.getElementById('withdraw-address');
             const amountInput = document.getElementById('withdraw-amount');
             const address = addressInput.value.trim();
@@ -11564,9 +11897,46 @@ No transfer fees for account transfer / exchange</div>
                 return;
             }
 
-            // Simple success message for demo
-            alert(`Withdrawal request for ${amount} ${selectedWithdrawCoin} via ${selectedWithdrawChain} submitted! Waiting for confirmation.`);
-            goBack();
+            if (parseFloat(amount) > currentUserBalance) {
+                alert('Insufficient balance.');
+                return;
+            }
+
+            const user = auth.currentUser;
+            if (!user) {
+                alert('You must be logged in to withdraw.');
+                return;
+            }
+
+            const btn = document.querySelector('#withdraw-screen .withdraw-submit-btn');
+            const originalText = btn.innerText;
+            btn.innerText = 'Submitting...';
+            btn.disabled = true;
+
+            try {
+                await addDoc(collection(db, 'withdrawals'), {
+                    user_uid: user.uid,
+                    user_email: user.email || user.phoneNumber || 'N/A',
+                    amount: parseFloat(amount),
+                    coin: selectedWithdrawCoin,
+                    chain: selectedWithdrawChain,
+                    address: address,
+                    status: 'Pending',
+                    platform: 'Mobile',
+                    timestamp: serverTimestamp()
+                });
+
+                alert(`Withdrawal request for ${amount} ${selectedWithdrawCoin} submitted! Waiting for admin confirmation.`);
+                addressInput.value = '';
+                amountInput.value = '';
+                goBack();
+            } catch (error) {
+                console.error("Withdrawal Error:", error);
+                alert("Failed to submit withdrawal: " + error.message);
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
         }
 
         function handleVoucherUpload(input) {
@@ -12623,6 +12993,85 @@ No transfer fees for account transfer / exchange</div>
             }
         };
 
+        window.fire_closePosition = async (tradeId) => {
+            const user = await checkSession(false);
+            if (!user) throw new Error("Please log in again.");
+
+            const tradeRef = doc(db, 'trades', tradeId);
+            const tradeSnap = await getDoc(tradeRef);
+            if (!tradeSnap.exists()) throw new Error("Trade not found.");
+
+            const tradeData = tradeSnap.data();
+            if (tradeData.status !== 'Open') throw new Error("Trade is already closed or pending.");
+
+            // 1. Get User Config (Rules)
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
+            const userData = userDoc.exists() ? userDoc.data() : {};
+            const userRule = (tradeData.type === 'Delivery') ?
+                (userData.delivery_rule || 'normal') : 'normal';
+
+            // 2. Determine Outcome Priority: Specific Table Override > Global User Rule
+            const activeOutcome = tradeData.admin_outcome || (userRule !== 'normal' ? userRule : null);
+
+            // 3. Calculate Final Close Price
+            const coin = tradeData.coin || (tradeData.pair ? tradeData.pair.split('/')[0] : 'BTC');
+            const currentMarketPrice = parseFloat(window.allCoinsData && window.allCoinsData[coin] ? window.allCoinsData[coin].price : tradeData.price);
+            const entryPrice = parseFloat(tradeData.price);
+            const direction = tradeData.direction || tradeData.side;
+            const isLong = direction.toLowerCase().includes('long') || direction.toLowerCase() === 'buy';
+
+            let finalClosePrice = currentMarketPrice;
+
+            // Priority 1: Custom Override Price (Fixed @ X.XX)
+            if (tradeData.customClosePrice) {
+                finalClosePrice = parseFloat(tradeData.customClosePrice);
+            }
+            // Priority 1.5: Global User Custom Price Fallback
+            else if (tradeData.type === 'Perpetual' && userData.perpetual_custom_price) {
+                finalClosePrice = parseFloat(userData.perpetual_custom_price);
+            }
+            // Priority 2: Force Win/Loss Rule (Delivery specific or Trade specific)
+            // Note: Per user request, Perpetual trades bypass this win/loss logic in favor of price control.
+            else if (activeOutcome === 'win') {
+                // Guaranteed gain (5-10% move in correct direction)
+                const move = 0.05 + (Math.random() * 0.05);
+                finalClosePrice = isLong ? (entryPrice * (1 + move)) : (entryPrice * (1 - move));
+            } else if (activeOutcome === 'loss') {
+                // Guaranteed loss (5-10% move in wrong direction)
+                const move = 0.05 + (Math.random() * 0.05);
+                finalClosePrice = isLong ? (entryPrice * (1 - move)) : (entryPrice * (1 + move));
+            }
+
+            // 4. Calculate Final P/L
+            const amount = parseFloat(tradeData.amount);
+            const leverage = parseFloat(tradeData.leverage || 1);
+            let pnl = 0;
+            if (isLong) {
+                pnl = (finalClosePrice - entryPrice) / entryPrice * amount * leverage;
+            } else {
+                pnl = (entryPrice - finalClosePrice) / entryPrice * amount * leverage;
+            }
+
+            // 5. Commit Updates
+            await updateDoc(tradeRef, {
+                status: 'Closed',
+                close_price: finalClosePrice,
+                final_pnl: pnl,
+                closed_at: serverTimestamp()
+            });
+
+            await updateDoc(doc(db, 'users', user.uid), {
+                balance: increment(pnl)
+            });
+
+            return {
+                pair: tradeData.pair || (coin + '/USDT'),
+                type: tradeData.type,
+                pnl: pnl,
+                isWin: pnl >= 0
+            };
+        };
+
         window.fire_submitTrade = async (data) => {
             console.log("Mobile: Attempting to submit trade to Firestore...", data);
             const user = await checkSession(false);
@@ -12650,25 +13099,38 @@ No transfer fees for account transfer / exchange</div>
             const symbol = window.currentTradingCoin || 'BTC';
             const mode = directionOverride ? directionOverride.toLowerCase() : (window.contractTradeMode || 'buy');
             const direction = mode === 'buy' ? 'Long' : 'Short';
-            const price = document.getElementById('contract-price-input').value;
-            const amount = document.getElementById('contract-total-input').value;
+            const price = document.getElementById('contract-price-input').value; // market price
+            const amount = document.getElementById('contract-total-input').value; // total USDT
             const leverage = window.currentLeverage || 1;
             const orderType = document.getElementById('order-type-text').innerText;
+
+            const margin = parseFloat(amount) / leverage;
 
             if (!amount || parseFloat(amount) <= 0) {
                 return alert("Please enter a valid amount.");
             }
 
             try {
+                // Get user global perpetual rule to initialize trade outcome
+                const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+                const userData = userDoc.exists() ? userDoc.data() : {};
+                const inheritedRule = userData.perpetual_rule && userData.perpetual_rule !== 'normal' ? userData.perpetual_rule : null;
+                const inheritedPrice = userData.perpetual_custom_price || null;
+
                 const tradeInfo = {
                     coin: symbol,
                     pair: symbol + '/USDT',
                     direction: direction,
-                    price: price,
-                    amount: amount,
+                    price: price, // entry price
+                    amount: amount, // size in usdt
                     leverage: leverage,
+                    margin: margin.toFixed(2),
                     order_type: orderType,
-                    type: 'Perpetual'
+                    type: 'Perpetual',
+                    status: 'Open',
+                    admin_outcome: null,
+                    customClosePrice: inheritedPrice,
+                    timestamp: Date.now()
                 };
 
                 await window.fire_submitTrade(tradeInfo);
@@ -12676,6 +13138,50 @@ No transfer fees for account transfer / exchange</div>
             } catch (e) {
                 alert("Trade failed: " + e.message);
             }
+        };
+
+        window.closePosition = async (tradeId) => {
+            if (!confirm("Are you sure you want to close this position?")) return;
+            try {
+                if (window.fire_closePosition) {
+                    const result = await window.fire_closePosition(tradeId);
+                    if (result && typeof result === 'object') {
+                        // Populate and show the Result Modal
+                        const overlay = document.getElementById('trade-result-overlay');
+                        const iconCircle = document.getElementById('result-icon-circle');
+                        const icon = document.getElementById('result-icon');
+                        const title = document.getElementById('result-title');
+                        const symbol = document.getElementById('result-symbol');
+                        const pnlValue = document.getElementById('result-pnl-value');
+
+                        symbol.innerText = `${result.pair} ${result.type}`;
+                        const formattedPnl = (result.pnl >= 0 ? '+' : '') + result.pnl.toFixed(2);
+                        pnlValue.innerText = `${formattedPnl} USDT`;
+
+                        if (result.isWin) {
+                            iconCircle.className = 'result-icon-circle result-icon-win';
+                            icon.innerHTML = '✓';
+                            title.innerText = 'Trade Win';
+                            pnlValue.className = 'result-pnl-value green-text';
+                        } else {
+                            iconCircle.className = 'result-icon-circle result-icon-lose';
+                            icon.innerHTML = '×';
+                            title.innerText = 'Trade Loss';
+                            pnlValue.className = 'result-pnl-value red-text';
+                        }
+
+                        overlay.style.display = 'flex';
+                    }
+                }
+            } catch (e) {
+                console.error("Close position error:", e);
+                alert("Failed to close position: " + e.message);
+            }
+        };
+
+        window.closeResultModal = () => {
+            const overlay = document.getElementById('trade-result-overlay');
+            if (overlay) overlay.style.display = 'none';
         };
 
         let depositHistoryUnsubscribe = null;
@@ -12794,7 +13300,12 @@ No transfer fees for account transfer / exchange</div>
                     if (availableTradeEl) availableTradeEl.innerText = `Available ${formattedBalance} USDT`;
 
                     const withdrawAvailableEl = document.getElementById('withdraw-available-text');
-                    if (withdrawAvailableEl) withdrawAvailableEl.innerText = `Available ${formattedBalance}`;
+                    const withdrawQuantityValEl = document.getElementById('withdraw-quantity-val');
+                    const coin = window.selectedWithdrawCoin || 'USDT';
+                    if (withdrawAvailableEl) withdrawAvailableEl.innerText = `Available: ${formattedBalance} ${coin}`;
+                    if (withdrawQuantityValEl) withdrawQuantityValEl.innerText = formattedBalance;
+
+                    currentUserBalance = parseFloat(balance);
 
                     console.log("Mobile: Balance updated to", formattedBalance);
                 }
@@ -12839,7 +13350,54 @@ No transfer fees for account transfer / exchange</div>
                 if (currentScreen === 'history') {
                     renderHistoryContractList();
                 }
+
+                // If the contract chart is open and the active sub-tab is open-orders, refresh it
+                if (typeof window.refreshChartOpenOrders === 'function') {
+                    window.refreshChartOpenOrders();
+                }
             });
+        }
+
+        function renderWithdrawHistory() {
+            const container = document.getElementById('hist-withdraw-content');
+            if (!container) return;
+
+            let labelHtml = '<div class="history-label">Cryptocurrency</div>';
+
+            if (!window.withdrawHistoryAll || window.withdrawHistoryAll.length === 0) {
+                container.innerHTML = labelHtml + '<div class="no-data-msg">No data</div>';
+                return;
+            }
+
+            let html = labelHtml;
+            window.withdrawHistoryAll.forEach(w => {
+                let statusColor = '#aaa';
+                if (w.status === 'Completed') statusColor = '#2ED573';
+                if (w.status === 'Rejected') statusColor = '#FF4757';
+                if (w.status === 'Pending' || w.status === 'Processing') statusColor = '#FFAB00';
+
+                const timeStr = w.timestamp ? new Date(w.timestamp.seconds * 1000).toLocaleString() : '';
+
+                html += `
+                    <div class="history-item" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 3px solid ${statusColor}">
+                        <div style="display:flex; justify-content:space-between; margin-bottom: 4px;">
+                            <span style="color: #fff; font-weight: 500; font-size: 14px;">Withdraw ${w.coin}</span>
+                            <span style="color: ${statusColor}; font-weight: 500; font-size: 14px;">${w.status}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
+                            <span style="color: #9CA3AF; font-size: 12px;">Network: ${w.chain}</span>
+                            <span style="color: #9CA3AF; font-size: 12px;">Amount: ${w.amount} ${w.coin}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
+                            <span style="color: #9CA3AF; font-size: 12px; word-break: break-all; margin-right: 10px;">Address: ${w.address}</span>
+                            <span style="color: #9CA3AF; font-size: 12px; white-space: nowrap;">${timeStr}</span>
+                        </div>
+                        ${w.rejection_reason ? `<div style="text-align:left; font-size:11px; color:#FF4757; margin-top:6px; background:rgba(255,71,87,0.1); padding:6px; border-radius:4px;">Reason: ${w.rejection_reason}</div>` : ''}
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
         }
 
         function renderHistoryContractList() {
@@ -12858,9 +13416,18 @@ No transfer fees for account transfer / exchange</div>
             let html = labelHtml;
             window.tradeHistoryAll.forEach(trade => {
                 const color = trade.direction === 'Long' ? '#2ED573' : '#FF4757';
+
+                let displayStatus = trade.status || 'Closed';
+                if (displayStatus === 'Approved') displayStatus = 'Win';
+                if (displayStatus === 'Rejected') displayStatus = 'Lose';
+                if (displayStatus === 'Closed') {
+                    const pnlVal = trade.final_pnl !== undefined ? trade.final_pnl : (trade.pnl || 0);
+                    displayStatus = pnlVal >= 0 ? 'Win' : 'Lose';
+                }
+
                 let statusColor = '#aaa';
-                if (trade.status === 'Approved' || trade.status === 'Win') statusColor = '#2ED573';
-                if (trade.status === 'Rejected' || trade.status === 'Lose') statusColor = '#FF4757';
+                if (displayStatus === 'Win') statusColor = '#2ED573';
+                if (displayStatus === 'Lose') statusColor = '#FF4757';
 
                 const timeStr = trade.time || (trade.timestamp ? new Date(trade.timestamp.seconds * 1000).toLocaleString() : '');
                 const badgeText = trade.type === 'Delivery' ? `${trade.direction} ${trade.delivery_time || ''}` : `${trade.direction} ${trade.leverage || 1}x`;
@@ -12869,7 +13436,7 @@ No transfer fees for account transfer / exchange</div>
                     <div class="history-item" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 3px solid ${statusColor}">
                         <div style="display:flex; justify-content:space-between; margin-bottom: 4px;">
                             <span style="color: #fff; font-weight: 500; font-size: 14px;">${trade.coin}/USDT <span style="font-size:12px; font-weight:normal; background: ${color}; padding: 2px 4px; border-radius: 4px; margin-left: 4px;">${badgeText}</span></span>
-                            <span style="color: ${statusColor}; font-weight: 500; font-size: 14px;">${trade.status || 'Closed'}</span>
+                            <span style="color: ${statusColor}; font-weight: 500; font-size: 14px;">${displayStatus}</span>
                         </div>
                         <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
                             <span style="color: #9CA3AF; font-size: 12px;">Type: ${trade.type}</span>
@@ -12887,6 +13454,37 @@ No transfer fees for account transfer / exchange</div>
             container.innerHTML = html;
         }
 
+        let withdrawHistoryUnsubscribe = null;
+        async function initWithdrawHistoryListener(user) {
+            if (!user) return;
+            if (withdrawHistoryUnsubscribe) withdrawHistoryUnsubscribe();
+
+            const q = collection(db, 'withdrawals');
+            withdrawHistoryUnsubscribe = onSnapshot(q, (snapshot) => {
+                window.withdrawHistoryAll = [];
+                snapshot.forEach(docSnap => {
+                    const d = docSnap.data();
+                    if (d.user_uid === user.uid) {
+                        window.withdrawHistoryAll.push({ id: docSnap.id, ...d });
+                    }
+                });
+
+                // Sort by timestamp descending
+                window.withdrawHistoryAll.sort((a, b) => {
+                    const tA = a.timestamp ? a.timestamp.seconds : 0;
+                    const tB = b.timestamp ? b.timestamp.seconds : 0;
+                    return tB - tA;
+                });
+
+                // Update UI if history screen is active and withdraw tab is selected
+                const historyScreen = document.getElementById('history-screen');
+                const withdrawTab = document.getElementById('hist-tab-withdraw');
+                if (historyScreen && !historyScreen.classList.contains('hidden') && withdrawTab && withdrawTab.classList.contains('active')) {
+                    renderWithdrawHistory();
+                }
+            });
+        }
+
         // Initialize all listeners when the auth state changes
         onAuthStateChanged(auth, (user) => {
             if (user) {
@@ -12895,6 +13493,7 @@ No transfer fees for account transfer / exchange</div>
                 initChat();
                 initDepositSync();
                 initDepositHistoryListener(user);
+                initWithdrawHistoryListener(user);
                 initUserBalanceListener(user);
                 initTradeHistoryListener(user);
             } else {
@@ -12902,6 +13501,7 @@ No transfer fees for account transfer / exchange</div>
                 if (unreadUnsubscribe) unreadUnsubscribe();
                 if (chatUnsubscribe) chatUnsubscribe();
                 if (depositHistoryUnsubscribe) depositHistoryUnsubscribe();
+                if (withdrawHistoryUnsubscribe) withdrawHistoryUnsubscribe();
                 if (userBalanceUnsubscribe) userBalanceUnsubscribe();
                 if (tradeHistoryUnsubscribe) tradeHistoryUnsubscribe();
             }
@@ -12921,7 +13521,23 @@ No transfer fees for account transfer / exchange</div>
         };
 
         window.renderHistoryContractList = renderHistoryContractList;
+        window.renderWithdrawHistory = renderWithdrawHistory;
     </script>
+    <!-- Trade Result Modal -->
+    <div id="trade-result-overlay">
+        <div class="result-modal-box">
+            <div id="result-icon-circle" class="result-icon-circle">
+                <span id="result-icon"></span>
+            </div>
+            <div id="result-title" class="result-title"></div>
+            <div id="result-symbol" class="result-symbol"></div>
+
+            <div class="result-pnl-label">Realized P/L</div>
+            <div id="result-pnl-value" class="result-pnl-value"></div>
+
+            <button class="result-btn-confirm" onclick="closeResultModal()">Confirm</button>
+        </div>
+    </div>
 </body>
 
 </html>
