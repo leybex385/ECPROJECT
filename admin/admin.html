@@ -2300,6 +2300,42 @@
         </div>
     </div>
 
+    <!-- Custom Close Price Modal -->
+    <div class="modal-overlay" id="overridePriceModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="text-xl font-bold text-gray-800">Set Custom Close Price</h3>
+                <button onclick="closeModal('overridePriceModal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="ri-close-line text-2xl"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="overrideTradeId">
+                <div class="form-group">
+                    <label>Position</label>
+                    <p id="overridePositionLabel" class="font-bold text-purple-600">BTC/USDT Perpetual Long</p>
+                </div>
+                <div class="form-group">
+                    <label>Entry Price</label>
+                    <p id="overrideEntryPrice" class="text-gray-500">---</p>
+                </div>
+                <div class="form-group">
+                    <label>Custom Closing Price *</label>
+                    <input type="number" id="customClosePriceInput" step="0.0001"
+                        placeholder="Enter price to force win/loss" class="border rounded-lg px-4 py-2">
+                    <p class="text-xs text-gray-400 mt-2">Setting this price will override the market price when the
+                        user or system closes the position.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal('overridePriceModal')" class="btn-secondary">Cancel</button>
+                <button class="btn-primary" onclick="saveOverridePrice()">
+                    <i class="ri-check-line mr-2"></i>Apply Override
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- QR Code Modal -->
     <div class="modal-overlay" id="qrModal">
         <div class="modal">
@@ -2590,7 +2626,98 @@
                 // Also update the header pending badge
                 document.querySelector('.status-badge.status-pending').innerText = `${pendingCount} Pending`;
             });
+
+            // Sync Contracts (Perpetual Trades)
+            onSnapshot(collection(db, 'trades'), (snapshot) => {
+                const contractsTable = document.getElementById('contractsTable');
+                let html = '';
+                let openCount = 0;
+
+                window.tradeDataMap = window.tradeDataMap || {};
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.type !== 'Perpetual') return;
+
+                    const tradeId = doc.id;
+                    window.tradeDataMap[tradeId] = { ...data, id: tradeId };
+
+                    if (data.status === 'Open') openCount++;
+
+                    const date = data.timestamp ? new Date(data.timestamp).toLocaleString() : '---';
+                    const directionColor = data.direction === 'Long' ? 'text-green-600' : 'text-red-600';
+
+                    // P/L Calculation for Admin view
+                    const currentPrice = window.allCoinsData && window.allCoinsData[data.coin] ? window.allCoinsData[data.coin].price : data.price;
+                    const entryPrice = parseFloat(data.price);
+                    const amount = parseFloat(data.amount);
+                    let pnl = 0;
+                    if (data.direction === 'Long') {
+                        pnl = (currentPrice - entryPrice) * (amount / entryPrice);
+                    } else {
+                        pnl = (entryPrice - currentPrice) * (amount / entryPrice);
+                    }
+
+                    html += `
+                        <tr>
+                            <td class="font-mono text-xs">#${tradeId.substring(0, 8)}</td>
+                            <td>UID: #${(data.uid || '---').substring(0, 8)}</td>
+                            <td class="font-bold">${data.coin}/USDT</td>
+                            <td class="${directionColor} font-bold">${data.direction}</td>
+                            <td>${data.amount} USDT</td>
+                            <td>${data.price}</td>
+                            <td>${currentPrice}</td>
+                            <td class="${pnl >= 0 ? 'text-green-600' : 'text-red-600'} font-bold">
+                                ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
+                                ${data.customClosePrice ? `<br><span class="text-[10px] text-orange-500 underline">Fixed @ ${data.customClosePrice}</span>` : ''}
+                            </td>
+                            <td><span class="status-badge status-${data.status.toLowerCase()}">${data.status}</span></td>
+                            <td>
+                                <div class="flex gap-2">
+                                    <button class="action-btn edit" title="Set Custom Price" onclick="openOverrideModal('${tradeId}')">
+                                        <i class="ri-edit-line"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                if (html === '') {
+                    html = '<tr><td colspan="11" class="text-center text-gray-400 py-12">No perpetual positions found.</td></tr>';
+                }
+                contractsTable.innerHTML = html;
+                document.querySelector('#contracts .stat-card:nth-child(1) h3').innerText = openCount;
+            });
         }
+
+        window.openOverrideModal = function (tradeId) {
+            const trade = window.tradeDataMap[tradeId];
+            if (!trade) return;
+
+            document.getElementById('overrideTradeId').value = tradeId;
+            document.getElementById('overridePositionLabel').innerText = `${trade.coin}/USDT Perpetual ${trade.direction}`;
+            document.getElementById('overrideEntryPrice').innerText = `Entry: ${trade.price}`;
+            document.getElementById('customClosePriceInput').value = trade.customClosePrice || '';
+            document.getElementById('overridePriceModal').classList.add('active');
+        };
+
+        window.saveOverridePrice = async function () {
+            const tradeId = document.getElementById('overrideTradeId').value;
+            const customPrice = document.getElementById('customClosePriceInput').value;
+
+            if (!customPrice) return alert("Please enter a custom price.");
+
+            try {
+                await updateDoc(doc(db, 'trades', tradeId), {
+                    customClosePrice: parseFloat(customPrice)
+                });
+                alert("Custom close price set successfully. This will be used for final settlement.");
+                closeModal('overridePriceModal');
+            } catch (e) {
+                alert("Failed to save override: " + e.message);
+            }
+        };
 
         window.viewKYC = function (uid) {
             const data = window.kycDataMap[uid];
